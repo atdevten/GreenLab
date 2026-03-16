@@ -1,0 +1,184 @@
+@import "tailwindcss";
+
+:root {
+  --bg:        #0d1117;
+  --surface:   #161b22;
+  --surface2:  #1f2937;
+  --border:    #30363d;
+  --border2:   #21262d;
+  --text:      #e6edf3;
+  --muted:     #8b949e;
+  --accent:    #2563eb;
+  --accent-lt: #3b82f6;
+  --green:     #22c55e;
+  --yellow:    #f59e0b;
+  --red:       #ef4444;
+  --purple:    #a855f7;
+  --cyan:      #06b6d4;
+  --radius:    8px;
+  --radius-lg: 12px;
+  --sidebar-w: 220px;
+  --header-h:  56px;
+  --transition: 180ms ease;
+}
+
+[data-theme="light"] {
+  --bg:        #f6f8fa;
+  --surface:   #ffffff;
+  --surface2:  #f0f2f5;
+  --border:    #d0d7de;
+  --border2:   #e1e4e8;
+  --text:      #1f2328;
+  --muted:     #57606a;
+  --accent:    #2563eb;
+  --accent-lt: #1d4ed8;
+  --green:     #1a7f37;
+  --yellow:    #bf8700;
+  --red:       #cf222e;
+  --purple:    #8250df;
+  --cyan:      #0969da;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+a { text-decoration: none; color: inherit; }
+button { cursor: pointer; font-family: inherit; font-size: inherit; border: none; background: none; }
+ul { list-style: none; }
+#root { height: 100%; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+/* Leaflet overrides */
+.leaflet-container { background: var(--surface2) !important; font-family: inherit; }
+:root .leaflet-tile-pane { filter: brightness(.7) invert(1) contrast(3) hue-rotate(200deg) saturate(.3) brightness(.7); }
+[data-theme="light"] .leaflet-tile-pane { filter: none; }
+.leaflet-popup-content-wrapper {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,.5) !important;
+}
+.leaflet-popup-tip { background: var(--surface) !important; }
+.leaflet-popup-content { margin: 10px 14px; font-size: 13px; }
+.leaflet-control-zoom a {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .6; }
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+
+/* Sidebar — desktop: normal flow; mobile: fixed slide-in */
+.sidebar {
+  transition: transform 300ms cubic-bezier(.4,0,.2,1);
+}
+
+/* Mobile overlay — hidden by default, shown via class on mobile */
+.mobile-overlay { display: none; }
+
+/* Responsive grid helpers (override inline styles via !important) */
+/* 4-col → 2-col → 1-col */
+.rg4 { display: grid !important; }
+/* 3-col → 2-col → 1-col */
+.rg3 { display: grid !important; }
+/* 2-col → 1-col */
+.rg2 { display: grid !important; }
+/* 7fr 5fr → 1-col */
+.rg-split { display: grid !important; }
+
+/* Settings layout */
+.settings-layout { display: grid; grid-template-columns: 180px 1fr; gap: 24px; align-items: start; }
+.settings-nav { display: flex; flex-direction: column; gap: 2px; }
+
+/* Live Data layout */
+.live-layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
+
+/* Query filters */
+.query-filters { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 12px; }
+
+/* Settings side nav item hover */
+.settings-nav-item { cursor: pointer; border-radius: var(--radius); transition: background var(--transition), color var(--transition); }
+.settings-nav-item:hover { background: var(--surface2) !important; color: var(--text) !important; }
+
+/* Sidebar nav item — CSS-driven hover/active instead of inline JS handlers */
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 8px; border-radius: var(--radius);
+  color: var(--muted); cursor: pointer;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+  user-select: none;
+  border-left: 2px solid transparent;
+}
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.nav-active {
+  background: rgba(37,99,235,.15);
+  color: var(--accent-lt);
+  border-left-color: var(--accent);
+}
+
+@media (max-width: 768px) {
+  .settings-layout { grid-template-columns: 1fr !important; }
+  .settings-nav { flex-direction: row !important; overflow-x: auto; gap: 4px; padding-bottom: 4px; }
+  .live-layout   { grid-template-columns: 1fr !important; }
+  .query-filters { grid-template-columns: 1fr 1fr !important; }
+  /* Sidebar becomes a fixed overlay panel */
+  .sidebar {
+    position: fixed !important;
+    left: 0; top: 0; bottom: 0;
+    width: 260px !important;
+    z-index: 100;
+  }
+  .sidebar-closed { transform: translateX(-100%); }
+  .sidebar-open   { transform: translateX(0); }
+
+  /* Show backdrop when sidebar open on mobile */
+  .mobile-overlay { display: block !important; }
+
+  /* Reduce main content padding */
+  .main-pad { padding: 12px !important; }
+
+  /* Hide elements on small screens */
+  .hide-sm { display: none !important; }
+
+  /* Grid collapses */
+  .rg4     { grid-template-columns: repeat(2, 1fr) !important; }
+  .rg3     { grid-template-columns: 1fr !important; }
+  .rg2     { grid-template-columns: 1fr !important; }
+  .rg-split { grid-template-columns: 1fr !important; }
+
+  /* Stack flex rows on mobile */
+  .stack-sm { flex-direction: column !important; align-items: stretch !important; }
+
+  /* Full-width buttons */
+  .full-sm  { width: 100% !important; }
+}
+
+@media (min-width: 769px) and (max-width: 1100px) {
+  .rg4     { grid-template-columns: repeat(2, 1fr) !important; }
+  .rg3     { grid-template-columns: repeat(2, 1fr) !important; }
+  .rg-split { grid-template-columns: 1fr !important; }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

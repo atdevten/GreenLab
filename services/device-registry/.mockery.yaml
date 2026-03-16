@@ -1,0 +1,21 @@
+with-expecter: true
+packages:
+  github.com/greenlab/device-registry/internal/domain/device:
+    config:
+      dir: internal/mocks/device
+      outpkg: mockdevice
+    interfaces:
+      DeviceRepository:
+      DeviceCacheRepository:
+  github.com/greenlab/device-registry/internal/domain/channel:
+    config:
+      dir: internal/mocks/channel
+      outpkg: mockchannel
+    interfaces:
+      ChannelRepository:
+  github.com/greenlab/device-registry/internal/domain/field:
+    config:
+      dir: internal/mocks/field
+      outpkg: mockfield
+    interfaces:
+      FieldRepository:

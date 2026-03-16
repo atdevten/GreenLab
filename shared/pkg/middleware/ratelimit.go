@@ -1,0 +1,98 @@
+package middleware
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+)
+
+// RateLimitConfig defines settings for the rate limiter.
+type RateLimitConfig struct {
+	// Requests is the maximum number of requests allowed per Window.
+	Requests int
+	// Window is the duration of the sliding window.
+	Window time.Duration
+	// KeyFunc extracts a key from the request (e.g., IP or user ID).
+	KeyFunc func(c *gin.Context) string
+}
+
+// RateLimit returns a Redis-backed sliding window rate limiter middleware.
+func RateLimit(rdb *redis.Client, cfg RateLimitConfig) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		key := cfg.KeyFunc(c)
+		redisKey := fmt.Sprintf("ratelimit:%s", key)
+
+		ctx := context.Background()
+		now := time.Now()
+		windowStart := now.Add(-cfg.Window)
+
+		pipe := rdb.Pipeline()
+		// Remove expired entries
+		pipe.ZRemRangeByScore(ctx, redisKey, "0", strconv.FormatInt(windowStart.UnixNano(), 10))
+		// Count remaining
+		countCmd := pipe.ZCard(ctx, redisKey)
+		// Add current request
+		pipe.ZAdd(ctx, redisKey, redis.Z{
+			Score:  float64(now.UnixNano()),
+			Member: now.UnixNano(),
+		})
+		// Set expiry
+		pipe.Expire(ctx, redisKey, cfg.Window)
+
+		_, err := pipe.Exec(ctx)
+		if err != nil {
+			// On Redis failure, allow the request
+			c.Next()
+			return
+		}
+
+		count := countCmd.Val()
+		remaining := int64(cfg.Requests) - count - 1
+		if remaining < 0 {
+			remaining = 0
+		}
+
+		c.Header("X-RateLimit-Limit", strconv.Itoa(cfg.Requests))
+		c.Header("X-RateLimit-Remaining", strconv.FormatInt(remaining, 10))
+		c.Header("X-RateLimit-Reset", strconv.FormatInt(now.Add(cfg.Window).Unix(), 10))
+
+		if count >= int64(cfg.Requests) {
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"error": "rate limit exceeded",
+			})
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// IPKeyFunc extracts the client IP as the rate limit key.
+func IPKeyFunc(c *gin.Context) string {
+	return c.ClientIP()
+}
+
+// UserIDKeyFunc extracts the authenticated user ID as the rate limit key.
+func UserIDKeyFunc(c *gin.Context) string {
+	if uid, ok := c.Get(ContextKeyUserID); ok {
+		if s, ok := uid.(string); ok && s != "" {
+			return s
+		}
+	}
+	return c.ClientIP()
+}
+
+// APIKeyKeyFunc extracts the API key as the rate limit key.
+func APIKeyKeyFunc(c *gin.Context) string {
+	if key, ok := c.Get(ContextKeyAPIKey); ok {
+		if s, ok := key.(string); ok && s != "" {
+			return s
+		}
+	}
+	return c.ClientIP()
+}

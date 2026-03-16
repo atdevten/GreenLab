@@ -1,0 +1,26 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4ade80"/>
+      <stop offset="100%" stop-color="#15803d"/>
+    </linearGradient>
+  </defs>
+  <path d="M32 8 C20 14 12 22 12 34 C12 46 20 54 32 56 C44 50 52 42 52 30 C52 18 44 10 32 8 Z" fill="#052e16"/>
+  <path d="M32 8 C20 14 12 22 12 34 C12 46 20 54 32 56 C44 50 52 42 52 30 C52 18 44 10 32 8 Z" fill="none" stroke="url(#grad)" stroke-width="1.5"/>
+  <line x1="32" y1="10" x2="32" y2="54" stroke="#22c55e" stroke-width="1.5"/>
+  <polyline points="32,22 22,22 22,17" stroke="#22c55e" stroke-width="1.2" fill="none"/>
+  <polyline points="32,32 19,32 19,27" stroke="#22c55e" stroke-width="1.2" fill="none"/>
+  <polyline points="32,42 22,42 22,47" stroke="#22c55e" stroke-width="1.2" fill="none"/>
+  <polyline points="32,22 42,22 42,17" stroke="#22c55e" stroke-width="1.2" fill="none"/>
+  <polyline points="32,32 45,32 45,27" stroke="#22c55e" stroke-width="1.2" fill="none"/>
+  <polyline points="32,42 42,42 42,47" stroke="#22c55e" stroke-width="1.2" fill="none"/>
+  <rect x="19.5" y="14.5" width="5" height="5" rx="1" fill="#22c55e"/>
+  <rect x="16.5" y="24.5" width="5" height="5" rx="1" fill="#22c55e"/>
+  <rect x="19.5" y="44.5" width="5" height="5" rx="1" fill="#22c55e"/>
+  <rect x="39.5" y="14.5" width="5" height="5" rx="1" fill="#22c55e"/>
+  <rect x="42.5" y="24.5" width="5" height="5" rx="1" fill="#22c55e"/>
+  <rect x="39.5" y="44.5" width="5" height="5" rx="1" fill="#22c55e"/>
+  <circle cx="32" cy="22" r="2" fill="#4ade80"/>
+  <circle cx="32" cy="32" r="2" fill="#4ade80"/>
+  <circle cx="32" cy="42" r="2" fill="#4ade80"/>
+</svg>

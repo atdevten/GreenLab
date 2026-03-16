@@ -1,0 +1,9 @@
+with-expecter: true
+packages:
+  github.com/greenlab/ingestion/internal/application:
+    config:
+      dir: internal/mocks/application
+      outpkg: mockapplication
+    interfaces:
+      Writer:
+      EventPublisher:

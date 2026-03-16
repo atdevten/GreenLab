@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GreenLab — Backend Services Architecture · Go + Python</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: monospace; background: #fafafa; color: #111; padding: 28px; font-size: 12px; }
+
+  h1 { font-size: 17px; text-align: center; margin-bottom: 4px; letter-spacing: 1px; }
+  .subtitle { text-align: center; font-size: 11px; color: #666; margin-bottom: 20px; }
+
+  /* ── Topology overview ── */
+  .topo {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 0;
+    border: 1.5px solid #111;
+    margin-bottom: 28px;
+  }
+  .topo-label {
+    background: #111; color: #fff;
+    writing-mode: vertical-rl; text-orientation: mixed;
+    text-align: center; font-size: 9px; letter-spacing: 3px;
+    padding: 12px 6px;
+  }
+  .topo-row { display: flex; flex-direction: column; }
+  .topo-band {
+    display: flex; align-items: stretch;
+    border-bottom: 1px solid #ddd;
+  }
+  .topo-band:last-child { border-bottom: none; }
+  .topo-zone {
+    font-size: 9px; letter-spacing: 2px; font-weight: bold;
+    writing-mode: vertical-rl; padding: 6px 5px;
+    border-right: 1px solid #ddd; min-width: 26px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .topo-zone.public  { background: #fff3cd; }
+  .topo-zone.dmz     { background: #fde8e8; }
+  .topo-zone.private { background: #e8f4fd; }
+  .topo-zone.data    { background: #e8fde8; }
+  .topo-zone.ml      { background: #f3e8fd; }
+  .topo-boxes { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 12px; align-items: center; }
+  .topo-box {
+    border: 1px solid #ccc; padding: 4px 10px;
+    font-size: 10px; background: #fff; white-space: nowrap;
+  }
+  .topo-box.bold { font-weight: bold; border-color: #111; }
+  .topo-arrow { font-size: 10px; color: #aaa; }
+
+  /* ── Section headers ── */
+  .sec {
+    background: #111; color: #fff;
+    padding: 5px 14px; font-size: 10px; letter-spacing: 3px; font-weight: bold;
+    display: flex; justify-content: space-between; align-items: center;
+    border: 1.5px solid #111; border-bottom: none; margin-top: 22px;
+  }
+  .sec .tag {
+    font-size: 9px; padding: 1px 6px; font-weight: bold; letter-spacing: 1px;
+  }
+  .tag.green  { background: #00cc66; color: #111; }
+  .tag.blue   { background: #00aaff; color: #111; }
+  .tag.yellow { background: #ffcc00; color: #111; }
+  .tag.purple { background: #aa66ff; color: #fff; }
+  .tag.red    { background: #ff4444; color: #fff; }
+
+  /* ── Service card grid ── */
+  .svc-grid {
+    display: grid;
+    border: 1.5px solid #111;
+  }
+  .g2 { grid-template-columns: repeat(2, 1fr); }
+  .g3 { grid-template-columns: repeat(3, 1fr); }
+  .g4 { grid-template-columns: repeat(4, 1fr); }
+
+  .svc {
+    padding: 11px 13px;
+    border-right: 1px solid #ddd;
+    border-bottom: 1px solid #ddd;
+    background: #fff;
+  }
+  .svc:last-child { border-right: none; }
+  .svc.no-bottom { border-bottom: none; }
+  .svc.accent-green  { border-left: 3px solid #00cc66; }
+  .svc.accent-blue   { border-left: 3px solid #00aaff; }
+  .svc.accent-yellow { border-left: 3px solid #f0a500; }
+  .svc.accent-purple { border-left: 3px solid #aa66ff; }
+  .svc.accent-red    { border-left: 3px solid #ff4444; }
+  .svc.dark { background: #1a1a1a; }
+
+  .svc-name { font-weight: bold; font-size: 11px; margin-bottom: 3px; }
+  .svc-tech { font-size: 9px; color: #0077cc; margin-bottom: 5px; font-style: italic; }
+  .svc-tech.go { color: #00897b; }
+  .svc-tech.py { color: #e65100; }
+  .svc.py-svc { border-top: 2px solid #e65100; }
+  .lang-legend { display: flex; gap: 20px; justify-content: center; margin-bottom: 18px; font-size: 10px; align-items: center; }
+  .lang-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+  .lang-dot.go { background: #00897b; }
+  .lang-dot.py { background: #e65100; }
+  .lang-dot.infra { background: #888; }
+  .svc-desc { font-size: 9px; color: #666; line-height: 1.5; margin-bottom: 5px; }
+  .pill-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .pill {
+    font-size: 8px; padding: 1px 5px;
+    border: 1px solid #ccc; color: #555;
+    white-space: nowrap;
+  }
+  .pill.bold { border-color: #111; color: #111; font-weight: bold; }
+
+  /* ── Responsibilities table ── */
+  .resp-table { width: 100%; border-collapse: collapse; border: 1.5px solid #111; }
+  .resp-table th {
+    background: #111; color: #fff;
+    padding: 5px 10px; font-size: 9px; letter-spacing: 2px; text-align: left;
+    border-right: 1px solid #333;
+  }
+  .resp-table th:last-child { border-right: none; }
+  .resp-table td {
+    padding: 7px 10px; font-size: 9px; color: #444;
+    border-right: 1px solid #ddd; border-bottom: 1px solid #eee;
+    vertical-align: top; line-height: 1.5;
+  }
+  .resp-table tr:last-child td { border-bottom: none; }
+  .resp-table td:last-child { border-right: none; }
+  .resp-table td.svc-col { font-weight: bold; font-size: 10px; color: #111; white-space: nowrap; }
+  .resp-table tr:nth-child(even) td { background: #f9f9f9; }
+
+  /* ── Communication matrix ── */
+  .comm-grid {
+    display: grid; grid-template-columns: 160px repeat(7, 1fr);
+    border: 1.5px solid #111;
+  }
+  .comm-cell {
+    padding: 5px 6px; border-right: 1px solid #ddd; border-bottom: 1px solid #ddd;
+    font-size: 9px; text-align: center;
+  }
+  .comm-cell:last-child { border-right: none; }
+  .comm-cell.header { background: #111; color: #fff; font-weight: bold; letter-spacing: 1px; font-size: 9px; }
+  .comm-cell.row-header { background: #f0f0f0; font-weight: bold; text-align: left; font-size: 9px; }
+  .comm-cell.yes { background: #d4edda; color: #155724; font-weight: bold; }
+  .comm-cell.async { background: #fff3cd; color: #856404; font-weight: bold; }
+  .comm-cell.no { color: #ccc; }
+  .comm-cell.self { background: #eee; color: #aaa; }
+
+  /* ── Data flow ── */
+  .flow { display: flex; align-items: stretch; border: 1.5px solid #111; overflow: hidden; }
+  .flow-step {
+    flex: 1; padding: 10px 11px; border-right: 1px solid #ddd; position: relative;
+  }
+  .flow-step:last-child { border-right: none; }
+  .flow-num { font-size: 20px; font-weight: bold; color: #e8e8e8; position: absolute; top: 6px; right: 8px; }
+  .flow-svc { font-weight: bold; font-size: 10px; margin-bottom: 2px; }
+  .flow-action { font-size: 9px; color: #0077cc; margin-bottom: 4px; font-style: italic; }
+  .flow-detail { font-size: 9px; color: #777; line-height: 1.4; }
+
+  /* ── Principles ── */
+  .p-grid { display: grid; grid-template-columns: repeat(3, 1fr); border: 1.5px solid #111; }
+  .p-cell { padding: 10px 13px; border-right: 1px dashed #ccc; border-bottom: 1px dashed #ccc; }
+  .p-cell:nth-child(3n) { border-right: none; }
+  .p-cell:nth-last-child(-n+3) { border-bottom: none; }
+  .p-title { font-weight: bold; font-size: 10px; margin-bottom: 3px; }
+  .p-desc { font-size: 9px; color: #666; line-height: 1.5; }
+
+  .divider { border: none; border-top: 1px dashed #ccc; margin: 6px 0; }
+  .arrow { text-align: center; font-size: 14px; color: #999; padding: 3px 0; }
+  .footer { text-align: center; font-size: 9px; color: #bbb; margin-top: 18px; letter-spacing: 2px; }
+  .note { font-size: 9px; color: #888; font-style: italic; padding: 4px 0; }
+</style>
+</head>
+<body>
+
+<h1>THINGSPEAK — BACKEND SERVICES ARCHITECTURE</h1>
+<p class="subtitle">Microservices design · Domain-driven · Event-driven · Go services · Python ML/AI</p>
+<div class="lang-legend">
+  <span><span class="lang-dot go"></span> <strong>Go</strong> — all backend / platform services</span>
+  <span><span class="lang-dot py"></span> <strong>Python</strong> — ML / AI / model training services only</span>
+  <span><span class="lang-dot infra"></span> <strong>Infra</strong> — managed / infrastructure (language-agnostic)</span>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  NETWORK TOPOLOGY                                       -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="sec" style="margin-top:0;"><span>NETWORK TOPOLOGY — ZONE LAYOUT</span></div>
+<div class="topo">
+  <div class="topo-label">NETWORK ZONES</div>
+  <div class="topo-row">
+    <div class="topo-band">
+      <div class="topo-zone public">PUBLIC</div>
+      <div class="topo-boxes">
+        <div class="topo-box bold">CDN Edge (Cloudflare)</div>
+        <div class="topo-arrow">→</div>
+        <div class="topo-box bold">Load Balancer (L7)</div>
+        <div class="topo-arrow">→</div>
+        <div class="topo-box">DDoS Shield</div>
+        <div class="topo-arrow">→</div>
+        <div class="topo-box">SSL Termination</div>
+      </div>
+    </div>
+    <div class="topo-band">
+      <div class="topo-zone dmz">DMZ</div>
+      <div class="topo-boxes">
+        <div class="topo-box bold">API Gateway (Kong)</div>
+        <div class="topo-arrow">→</div>
+        <div class="topo-box bold">MQTT Broker Cluster</div>
+        <div class="topo-arrow">→</div>
+        <div class="topo-box bold">RTSP/WebRTC Ingest</div>
+        <div class="topo-arrow">→</div>
+        <div class="topo-box">Auth Service</div>
+      </div>
+    </div>
+    <div class="topo-band">
+      <div class="topo-zone private">PRIVATE — SERVICES</div>
+      <div class="topo-boxes">
+        <div class="topo-box bold">Ingestion Svc</div>
+        <div class="topo-arrow">→</div>
+        <div class="topo-box bold">Channel Svc</div>
+        <div class="topo-arrow">→</div>
+        <div class="topo-box bold">Prediction Svc</div>
+        <div class="topo-arrow">→</div>
+        <div class="topo-box bold">Alert Svc</div>
+        <div class="topo-arrow">→</div>
+        <div class="topo-box bold">Notification Svc</div>
+        <div class="topo-arrow">→</div>
+        <div class="topo-box bold">Video Svc</div>
+        <div class="topo-arrow">→</div>
+        <div class="topo-box bold">Fine-tune Svc</div>
+      </div>
+    </div>
+    <div class="topo-band">
+      <div class="topo-zone data">DATA</div>
+      <div class="topo-boxes">
+        <div class="topo-box bold">Kafka</div>
+        <div class="topo-arrow">·</div>
+        <div class="topo-box bold">InfluxDB</div>
+        <div class="topo-arrow">·</div>
+        <div class="topo-box bold">Cassandra</div>
+        <div class="topo-arrow">·</div>
+        <div class="topo-box bold">Redis</div>
+        <div class="topo-arrow">·</div>
+        <div class="topo-box bold">PostgreSQL</div>
+        <div class="topo-arrow">·</div>
+        <div class="topo-box">S3 / GCS</div>
+      </div>
+    </div>
+    <div class="topo-band">
+      <div class="topo-zone ml">ML</div>
+      <div class="topo-boxes">
+        <div class="topo-box bold">Triton Inference Server</div>
+        <div class="topo-arrow">·</div>
+        <div class="topo-box bold">Ray Train Cluster</div>
+        <div class="topo-arrow">·</div>
+        <div class="topo-box bold">MLflow Registry</div>
+        <div class="topo-arrow">·</div>
+        <div class="topo-box">Feature Store (Feast)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  DOMAIN 1 — PLATFORM / GATEWAY                         -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="sec"><span>DOMAIN 1 — PLATFORM & GATEWAY SERVICES</span><span class="tag blue">ENTRY</span></div>
+<div class="svc-grid g4">
+  <div class="svc accent-blue">
+    <div class="svc-name">API Gateway Service</div>
+    <div class="svc-tech">Kong / AWS API GW</div>
+    <div class="svc-desc">Single entry point for all REST/WebSocket traffic. Routes to downstream microservices. Enforces rate limits and API versioning.</div>
+    <div class="pill-row">
+      <span class="pill bold">rate limiting</span><span class="pill">routing</span><span class="pill">versioning</span><span class="pill">circuit breaker</span>
+    </div>
+  </div>
+  <div class="svc accent-blue">
+    <div class="svc-name">Auth Service</div>
+    <div class="svc-tech go">Go · OAuth2 / JWT / API Keys</div>
+    <div class="svc-desc">Issues and validates tokens. Manages API key lifecycle per device. Supports OAuth2 for user accounts. RBAC enforcement for org/workspace/channel.</div>
+    <div class="pill-row">
+      <span class="pill bold">JWT</span><span class="pill">OAuth2</span><span class="pill">API keys</span><span class="pill">RBAC</span><span class="pill">device allowlist</span>
+    </div>
+  </div>
+  <div class="svc accent-blue">
+    <div class="svc-name">Tenant Service</div>
+    <div class="svc-tech go">Go · PostgreSQL</div>
+    <div class="svc-desc">Manages the org → workspace → channel hierarchy. Stores subscription plans, quotas, billing metadata. Enforces per-tenant resource limits.</div>
+    <div class="pill-row">
+      <span class="pill bold">org management</span><span class="pill">quota enforcement</span><span class="pill">billing metadata</span>
+    </div>
+  </div>
+  <div class="svc accent-blue">
+    <div class="svc-name">Config Service</div>
+    <div class="svc-tech go">Go · etcd / Consul</div>
+    <div class="svc-desc">Stores channel field definitions, alert rules, model assignments, and dashboard layouts. Source of truth for all user configuration. Versioned.</div>
+    <div class="pill-row">
+      <span class="pill bold">channel config</span><span class="pill">feature flags</span><span class="pill">versioned config</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  DOMAIN 2 — SENSOR INGESTION                           -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="sec"><span>DOMAIN 2 — SENSOR INGESTION SERVICES</span><span class="tag green">DATA IN</span></div>
+<div class="svc-grid g4">
+  <div class="svc accent-green">
+    <div class="svc-name">MQTT Ingestion Service</div>
+    <div class="svc-tech go">EMQ X Broker · Go consumer</div>
+    <div class="svc-desc">Maintains millions of persistent MQTT connections. Validates device API keys. Parses payloads, normalizes fields, publishes to Kafka topic <em>raw.sensor.ingest</em>.</div>
+    <div class="pill-row">
+      <span class="pill bold">MQTT 3.1/5.0</span><span class="pill">payload validation</span><span class="pill">→ Kafka</span>
+    </div>
+  </div>
+  <div class="svc accent-green">
+    <div class="svc-name">HTTP Ingestion Service</div>
+    <div class="svc-tech go">Go · Nginx upstream</div>
+    <div class="svc-desc">REST endpoint for non-MQTT devices. Handles bulk batch writes. Validates schema against Config Service. Returns 429 with retry-after on overload.</div>
+    <div class="pill-row">
+      <span class="pill bold">REST write</span><span class="pill">bulk batch</span><span class="pill">backpressure</span><span class="pill">→ Kafka</span>
+    </div>
+  </div>
+  <div class="svc accent-green">
+    <div class="svc-name">Edge Aggregation Service</div>
+    <div class="svc-tech go">Go · Greengrass / K3s</div>
+    <div class="svc-desc">Runs on-premise on edge nodes. Pre-aggregates readings (min/max/avg per window). Compresses and batches uploads. Handles intermittent connectivity with local queue.</div>
+    <div class="pill-row">
+      <span class="pill bold">edge compute</span><span class="pill">local queue</span><span class="pill">compression</span>
+    </div>
+  </div>
+  <div class="svc accent-green">
+    <div class="svc-name">Schema Validation Service</div>
+    <div class="svc-tech go">Go · Confluent Schema Registry</div>
+    <div class="svc-desc">Enforces Avro/Protobuf contracts on all incoming messages. Rejects malformed payloads early. Manages schema evolution and compatibility checks.</div>
+    <div class="pill-row">
+      <span class="pill bold">Avro / Protobuf</span><span class="pill">schema evolution</span><span class="pill">dead-letter queue</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  DOMAIN 3 — VIDEO INGESTION                            -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="sec"><span>DOMAIN 3 — VIDEO / CAMERA SERVICES</span><span class="tag blue">STREAMING</span></div>
+<div class="svc-grid g4">
+  <div class="svc accent-blue">
+    <div class="svc-name">Stream Ingest Service</div>
+    <div class="svc-tech go">SRS / Nginx-RTMP · Go</div>
+    <div class="svc-desc">Accepts RTSP/RTMP from cameras. Authenticates via stream key. Buffers incoming video in Redis ring. Fans out to transcoding workers.</div>
+    <div class="pill-row">
+      <span class="pill bold">RTSP/RTMP</span><span class="pill">stream auth</span><span class="pill">Redis ring buffer</span>
+    </div>
+  </div>
+  <div class="svc accent-blue">
+    <div class="svc-name">WebRTC Gateway Service</div>
+    <div class="svc-tech go">Go · mediasoup bindings</div>
+    <div class="svc-desc">Handles browser-to-server WebRTC signaling (SDP/ICE). Enables sub-200ms live viewing. Bridges WebRTC streams into the HLS pipeline for recording.</div>
+    <div class="pill-row">
+      <span class="pill bold">WebRTC</span><span class="pill">SFU</span><span class="pill">&lt;200ms latency</span>
+    </div>
+  </div>
+  <div class="svc accent-blue">
+    <div class="svc-name">Transcoding Service</div>
+    <div class="svc-tech">FFmpeg workers · Kubernetes Jobs</div>
+    <div class="svc-desc">Converts raw stream to multi-bitrate HLS/DASH segments. Writes .ts chunks + .m3u8 manifests to S3. Scales horizontally with stream count.</div>
+    <div class="pill-row">
+      <span class="pill bold">HLS / DASH</span><span class="pill">adaptive bitrate</span><span class="pill">→ S3</span>
+    </div>
+  </div>
+  <div class="svc accent-blue py-svc">
+    <div class="svc-name"><span style="color:#e65100;font-weight:bold">[PY]</span> Video AI Service</div>
+    <div class="svc-tech py">Python · NVIDIA Triton</div>
+    <div class="svc-desc">Runs CV models per stream: object detection, motion, fire, intrusion, face blur. Publishes structured events to Kafka topic <em>raw.video.events</em> for correlation.</div>
+    <div class="pill-row">
+      <span class="pill bold">CV inference</span><span class="pill">object detection</span><span class="pill">→ Kafka events</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  DOMAIN 4 — STREAM PROCESSING                          -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="sec"><span>DOMAIN 4 — STREAM PROCESSING SERVICES</span><span class="tag yellow">REAL-TIME</span></div>
+<div class="svc-grid g4">
+  <div class="svc accent-yellow">
+    <div class="svc-name">Normalization Worker</div>
+    <div class="svc-tech go">Go Kafka Consumer · Apache Flink</div>
+    <div class="svc-desc">Consumes <em>raw.sensor.ingest</em>. Applies unit conversions, field mappings, and timestamp normalization. Emits to <em>normalized.sensor</em> topic.</div>
+    <div class="pill-row">
+      <span class="pill bold">Flink job</span><span class="pill">unit conversion</span><span class="pill">timestamp norm</span>
+    </div>
+  </div>
+  <div class="svc accent-yellow">
+    <div class="svc-name">Feature Engineering Worker</div>
+    <div class="svc-tech go">Go Kafka Consumer · Flink · Feast</div>
+    <div class="svc-desc">Computes rolling statistics, lag features, FFT frequency components, and rate-of-change. Writes real-time feature vectors to Feature Store for ML inference.</div>
+    <div class="pill-row">
+      <span class="pill bold">rolling stats</span><span class="pill">lag features</span><span class="pill">→ Feast</span>
+    </div>
+  </div>
+  <div class="svc accent-yellow">
+    <div class="svc-name">Correlation Worker</div>
+    <div class="svc-tech go">Go Kafka Consumer · Flink join</div>
+    <div class="svc-desc">Joins sensor stream with video events on channel ID + time window. Produces combined events (e.g. motion + temp spike). Emits to <em>events.correlated</em>.</div>
+    <div class="pill-row">
+      <span class="pill bold">stream join</span><span class="pill">multimodal events</span><span class="pill">time windows</span>
+    </div>
+  </div>
+  <div class="svc accent-yellow">
+    <div class="svc-name">Persistence Worker</div>
+    <div class="svc-tech go">Go Kafka Consumer · Flink · InfluxDB</div>
+    <div class="svc-desc">Batch-writes normalized sensor readings to InfluxDB (hot) and Cassandra (warm). Handles backpressure with adaptive batch sizing. Guarantees at-least-once delivery.</div>
+    <div class="pill-row">
+      <span class="pill bold">batch write</span><span class="pill">→ InfluxDB</span><span class="pill">→ Cassandra</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  DOMAIN 5 — CHANNEL & QUERY                            -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="sec"><span>DOMAIN 5 — CHANNEL & QUERY SERVICES</span><span class="tag green">READ PATH</span></div>
+<div class="svc-grid g3">
+  <div class="svc accent-green">
+    <div class="svc-name">Channel Service</div>
+    <div class="svc-tech go">Go · PostgreSQL</div>
+    <div class="svc-desc">CRUD for channels, fields, metadata, permissions. Owns the channel data model. All other services look up channel config here. Cached in Redis.</div>
+    <div class="pill-row">
+      <span class="pill bold">channel CRUD</span><span class="pill">field schema</span><span class="pill">permission model</span>
+    </div>
+  </div>
+  <div class="svc accent-green">
+    <div class="svc-name">Query Service</div>
+    <div class="svc-tech go">Go · InfluxDB / Cassandra / ClickHouse</div>
+    <div class="svc-desc">Handles all time-series read requests. Routes by time range: hot (InfluxDB), warm (Cassandra), cold (ClickHouse/Athena). Downsamples large ranges automatically.</div>
+    <div class="pill-row">
+      <span class="pill bold">time-range query</span><span class="pill">downsampling</span><span class="pill">tier routing</span><span class="pill">aggregation</span>
+    </div>
+  </div>
+  <div class="svc accent-green">
+    <div class="svc-name">Realtime Push Service</div>
+    <div class="svc-tech go">Go · WebSocket · Redis Pub/Sub</div>
+    <div class="svc-desc">Pushes live sensor updates to dashboard subscribers. Consumers subscribe by channel ID. Redis pub/sub fans out to multiple connected clients across pods.</div>
+    <div class="pill-row">
+      <span class="pill bold">WebSocket</span><span class="pill">Redis pub/sub</span><span class="pill">fan-out</span><span class="pill">heartbeat</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  DOMAIN 6 — ALERT                                      -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="sec"><span>DOMAIN 6 — ALERT & NOTIFICATION SERVICES</span><span class="tag red">TRIGGERS</span></div>
+<div class="svc-grid g4">
+  <div class="svc accent-red">
+    <div class="svc-name">Rule Engine Service</div>
+    <div class="svc-tech go">Go · Drools / custom DSL</div>
+    <div class="svc-desc">Evaluates user-defined threshold rules against live sensor stream. Supports compound conditions (field A > X AND field B < Y). Low-latency, stateless evaluation.</div>
+    <div class="pill-row">
+      <span class="pill bold">threshold rules</span><span class="pill">compound conditions</span><span class="pill">real-time eval</span>
+    </div>
+  </div>
+  <div class="svc accent-red">
+    <div class="svc-name">Predictive Alert Service</div>
+    <div class="svc-tech go">Go · integrates with Prediction Svc</div>
+    <div class="svc-desc">Fires alerts based on predicted future values. "Temperature will exceed 80°C in 8 minutes." Deduplicates alerts with cooldown windows per channel.</div>
+    <div class="pill-row">
+      <span class="pill bold">future-value alerts</span><span class="pill">deduplication</span><span class="pill">cooldown</span>
+    </div>
+  </div>
+  <div class="svc accent-red">
+    <div class="svc-name">Alert State Service</div>
+    <div class="svc-tech go">Go · Redis · PostgreSQL</div>
+    <div class="svc-desc">Tracks alert lifecycle: firing → acknowledged → resolved. Persists alert history. Prevents storm flooding. Exposes alert feed via REST and WebSocket.</div>
+    <div class="pill-row">
+      <span class="pill bold">alert lifecycle</span><span class="pill">storm prevention</span><span class="pill">history</span>
+    </div>
+  </div>
+  <div class="svc accent-red">
+    <div class="svc-name">Notification Dispatch Service</div>
+    <div class="svc-tech go">Go · multi-channel fanout</div>
+    <div class="svc-desc">Routes alerts to user-configured destinations. Webhook, email, SMS (Twilio), Slack, PagerDuty. Retry with exponential backoff. Tracks delivery status per alert.</div>
+    <div class="pill-row">
+      <span class="pill bold">webhook</span><span class="pill">Twilio SMS</span><span class="pill">Slack</span><span class="pill">PagerDuty</span><span class="pill">retry</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  DOMAIN 7 — AI PREDICTION                              -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="sec"><span>DOMAIN 7 — AI PREDICTION SERVICES</span><span class="tag purple">ML INFERENCE</span></div>
+<div class="svc-grid g4">
+  <div class="svc accent-purple">
+    <div class="svc-name">Prediction Orchestrator</div>
+    <div class="svc-tech go">Go · internal RPC</div>
+    <div class="svc-desc">Entry point for all prediction requests. Resolves which model version to use per channel (base vs user fine-tuned). Assembles feature vector from Feature Store and calls Inference Service.</div>
+    <div class="pill-row">
+      <span class="pill bold">model routing</span><span class="pill">feature assembly</span><span class="pill">orchestration</span>
+    </div>
+  </div>
+  <div class="svc accent-purple">
+    <div class="svc-name">Inference Service</div>
+    <div class="svc-tech">NVIDIA Triton · gRPC</div>
+    <div class="svc-desc">GPU-accelerated model serving. Dynamic batching across concurrent requests. Supports TensorRT, ONNX, PyTorch backends. Auto-scales GPU pods on load.</div>
+    <div class="pill-row">
+      <span class="pill bold">Triton Server</span><span class="pill">dynamic batching</span><span class="pill">GPU auto-scale</span><span class="pill">ONNX/TRT</span>
+    </div>
+  </div>
+  <div class="svc accent-purple">
+    <div class="svc-name">Prediction Store Service</div>
+    <div class="svc-tech go">Go · InfluxDB</div>
+    <div class="svc-desc">Persists prediction results as time-series alongside actual sensor values. Predictions queryable via same Query Service as raw data. Feeds drift detection.</div>
+    <div class="pill-row">
+      <span class="pill bold">→ InfluxDB</span><span class="pill">predicted field</span><span class="pill">actual vs predicted</span>
+    </div>
+  </div>
+  <div class="svc accent-purple py-svc">
+    <div class="svc-name">Drift Detection Service</div>
+    <div class="svc-tech py">Python · Evidently AI</div>
+    <div class="svc-desc">Continuously compares prediction distribution to actuals. Detects data drift and concept drift. Emits drift events to Kafka. Triggers retraining suggestions to user.</div>
+    <div class="pill-row">
+      <span class="pill bold">data drift</span><span class="pill">concept drift</span><span class="pill">auto-retrain signal</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  DOMAIN 8 — FINE-TUNING / MLOPS                        -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="sec"><span>DOMAIN 8 — FINE-TUNING & MLOPS SERVICES</span><span class="tag purple">USER ML</span></div>
+<div class="svc-grid g4">
+  <div class="svc accent-purple">
+    <div class="svc-name">Dataset Service</div>
+    <div class="svc-tech go">Go · S3 · PostgreSQL</div>
+    <div class="svc-desc">Exports channel data as training datasets. Applies label annotations from users. Manages train/val/test splits. Versions datasets for reproducibility.</div>
+    <div class="pill-row">
+      <span class="pill bold">dataset export</span><span class="pill">label management</span><span class="pill">train/val split</span>
+    </div>
+  </div>
+  <div class="svc accent-purple py-svc">
+    <div class="svc-name"><span style="color:#e65100;font-weight:bold">[PY]</span> Training Job Service</div>
+    <div class="svc-tech py">Python · Ray Train · K8s Jobs</div>
+    <div class="svc-desc">Launches distributed fine-tuning jobs on GPU cluster using LoRA adapters. Checkpoints every epoch to S3. Streams live metrics (loss, accuracy) to user dashboard via WebSocket.</div>
+    <div class="pill-row">
+      <span class="pill bold">Ray Train</span><span class="pill">LoRA fine-tune</span><span class="pill">spot GPU</span><span class="pill">live metrics</span>
+    </div>
+  </div>
+  <div class="svc accent-purple">
+    <div class="svc-name">Model Registry Service</div>
+    <div class="svc-tech">MLflow · S3 · PostgreSQL</div>
+    <div class="svc-desc">Versioned model store. Manages Staging → Production promotion flow. Stores model artifacts, hyperparams, eval metrics. Namespace isolated per user/org.</div>
+    <div class="pill-row">
+      <span class="pill bold">MLflow</span><span class="pill">staging → prod</span><span class="pill">rollback</span><span class="pill">versioning</span>
+    </div>
+  </div>
+  <div class="svc accent-purple py-svc">
+    <div class="svc-name">Experiment Tracker Service</div>
+    <div class="svc-tech">MLflow Tracking · W&B</div>
+    <div class="svc-desc">Records all training runs: hyperparams, metrics curves, confusion matrices. Enables side-by-side model comparison. Users can fork and adjust previous runs.</div>
+    <div class="pill-row">
+      <span class="pill bold">experiment tracking</span><span class="pill">model compare</span><span class="pill">run history</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  DOMAIN 9 — OBSERVABILITY                              -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="sec"><span>DOMAIN 9 — OBSERVABILITY & PLATFORM SERVICES</span><span class="tag green">OPS</span></div>
+<div class="svc-grid g4">
+  <div class="svc no-bottom">
+    <div class="svc-name">Metrics Service</div>
+    <div class="svc-tech">Prometheus · Grafana</div>
+    <div class="svc-desc">Scrapes all service metrics. SLO dashboards for ingestion latency, prediction latency, stream quality, GPU utilization, and queue depth.</div>
+    <div class="pill-row"><span class="pill bold">Prometheus</span><span class="pill">SLOs</span><span class="pill">Grafana</span></div>
+  </div>
+  <div class="svc no-bottom">
+    <div class="svc-name">Tracing Service</div>
+    <div class="svc-tech">Jaeger · OpenTelemetry</div>
+    <div class="svc-desc">Distributed tracing across all microservices. Trace IDs propagated through Kafka messages. End-to-end latency visibility from device to dashboard.</div>
+    <div class="pill-row"><span class="pill bold">Jaeger</span><span class="pill">OTel</span><span class="pill">trace propagation</span></div>
+  </div>
+  <div class="svc no-bottom">
+    <div class="svc-name">Logging Service</div>
+    <div class="svc-tech">Loki · Fluentd · Grafana</div>
+    <div class="svc-desc">Structured JSON logs from all services shipped via Fluentd. Indexed in Loki. Correlated with traces via trace ID. Retained 30 days hot, 1 year cold.</div>
+    <div class="pill-row"><span class="pill bold">Loki</span><span class="pill">structured logs</span><span class="pill">Fluentd</span></div>
+  </div>
+  <div class="svc no-bottom">
+    <div class="svc-name">Audit Service</div>
+    <div class="svc-tech go">Go · append-only Postgres</div>
+    <div class="svc-desc">Immutable audit trail for all user actions: config changes, model deployments, alert rule edits, data exports. Required for enterprise compliance (SOC2, ISO 27001).</div>
+    <div class="pill-row"><span class="pill bold">audit trail</span><span class="pill">SOC2</span><span class="pill">immutable log</span></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  SERVICE RESPONSIBILITY TABLE                           -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="sec" style="margin-top:22px;"><span>SERVICE RESPONSIBILITY SUMMARY</span></div>
+<table class="resp-table">
+  <thead>
+    <tr>
+      <th style="width:160px;">SERVICE</th>
+      <th>OWNS</th>
+      <th>READS FROM</th>
+      <th>WRITES TO</th>
+      <th>COMMUNICATES VIA</th>
+      <th>SCALES BY</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="svc-col">Auth Service</td>
+      <td>Tokens, API keys, RBAC rules</td>
+      <td>PostgreSQL (users, keys)</td>
+      <td>Redis (token cache)</td>
+      <td>Sync REST / gRPC sidecar</td>
+      <td>Stateless · horizontal</td>
+    </tr>
+    <tr>
+      <td class="svc-col">MQTT Ingestion</td>
+      <td>Device connections</td>
+      <td>Auth Service, Config Service</td>
+      <td>Kafka raw.sensor.ingest</td>
+      <td>MQTT + internal Kafka</td>
+      <td>Connection count per pod</td>
+    </tr>
+    <tr>
+      <td class="svc-col">HTTP Ingestion</td>
+      <td>REST write endpoint</td>
+      <td>Auth Service</td>
+      <td>Kafka raw.sensor.ingest</td>
+      <td>REST → Kafka</td>
+      <td>Stateless · horizontal</td>
+    </tr>
+    <tr>
+      <td class="svc-col">Stream Ingest</td>
+      <td>Live video streams</td>
+      <td>Auth Service (stream keys)</td>
+      <td>Redis buffer, S3 segments</td>
+      <td>RTSP/RTMP → internal</td>
+      <td>Per active stream</td>
+    </tr>
+    <tr>
+      <td class="svc-col"><span style="color:#e65100;font-weight:bold">[PY]</span> Video AI Service</td>
+      <td>CV inference per stream</td>
+      <td>Redis ring buffer</td>
+      <td>Kafka raw.video.events</td>
+      <td>Internal gRPC → Kafka</td>
+      <td>GPU pods per stream load</td>
+    </tr>
+    <tr>
+      <td class="svc-col">Normalization Worker</td>
+      <td>Cleaned sensor data</td>
+      <td>Kafka raw.sensor.ingest</td>
+      <td>Kafka normalized.sensor</td>
+      <td>Kafka Streams / Flink</td>
+      <td>Kafka partition count</td>
+    </tr>
+    <tr>
+      <td class="svc-col">Feature Eng. Worker</td>
+      <td>ML feature vectors</td>
+      <td>Kafka normalized.sensor</td>
+      <td>Feast Feature Store</td>
+      <td>Flink → Feast gRPC</td>
+      <td>Flink parallelism</td>
+    </tr>
+    <tr>
+      <td class="svc-col">Channel Service</td>
+      <td>Channel/field schema</td>
+      <td>PostgreSQL</td>
+      <td>Redis cache</td>
+      <td>REST + gRPC</td>
+      <td>Stateless · horizontal</td>
+    </tr>
+    <tr>
+      <td class="svc-col">Query Service</td>
+      <td>Read API</td>
+      <td>InfluxDB / Cassandra / ClickHouse</td>
+      <td>—</td>
+      <td>REST + WebSocket</td>
+      <td>Query concurrency</td>
+    </tr>
+    <tr>
+      <td class="svc-col">Rule Engine</td>
+      <td>Alert rules eval</td>
+      <td>Kafka normalized.sensor, Config</td>
+      <td>Kafka alert.triggered</td>
+      <td>Kafka consumer → Kafka</td>
+      <td>Rule count / throughput</td>
+    </tr>
+    <tr>
+      <td class="svc-col">Prediction Orchestrator</td>
+      <td>Model routing logic</td>
+      <td>Model Registry, Feast</td>
+      <td>Inference Service (gRPC)</td>
+      <td>Internal gRPC</td>
+      <td>Request concurrency</td>
+    </tr>
+    <tr>
+      <td class="svc-col">Inference Service</td>
+      <td>Model weights, GPU</td>
+      <td>S3 model artifacts</td>
+      <td>Prediction results (gRPC response)</td>
+      <td>gRPC · Triton</td>
+      <td>GPU pods + dynamic batch</td>
+    </tr>
+    <tr>
+      <td class="svc-col"><span style="color:#e65100;font-weight:bold">[PY]</span> Training Job Service</td>
+      <td>Fine-tune jobs</td>
+      <td>Dataset Service (S3)</td>
+      <td>Model Registry, S3 checkpoints</td>
+      <td>Kubernetes Jobs + WebSocket</td>
+      <td>Spot GPU nodes on demand</td>
+    </tr>
+    <tr>
+      <td class="svc-col">Notification Dispatch</td>
+      <td>Outbound alert delivery</td>
+      <td>Kafka alert.triggered</td>
+      <td>Delivery status → PostgreSQL</td>
+      <td>Kafka → HTTP webhooks</td>
+      <td>Alert volume</td>
+    </tr>
+    <tr>
+      <td class="svc-col"><span style="color:#e65100;font-weight:bold">[PY]</span> Drift Detection</td>
+      <td>Model health monitoring</td>
+      <td>InfluxDB (predicted + actual)</td>
+      <td>Kafka model.drift.events</td>
+      <td>Scheduled + streaming</td>
+      <td>Active model count</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  SERVICE COMMUNICATION MATRIX                           -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="sec"><span>SERVICE COMMUNICATION MATRIX</span><span class="tag green">SYNC</span><span style="margin-left:6px;" class="tag yellow">ASYNC</span></div>
+<div style="font-size:9px; padding:5px 0; color:#888; font-style:italic;">SYNC = gRPC or REST · ASYNC = Kafka event</div>
+<div class="comm-grid">
+  <div class="comm-cell header">FROM \ TO →</div>
+  <div class="comm-cell header">Auth</div>
+  <div class="comm-cell header">Channel Svc</div>
+  <div class="comm-cell header">Kafka Bus</div>
+  <div class="comm-cell header">Inference Svc</div>
+  <div class="comm-cell header">Model Registry</div>
+  <div class="comm-cell header">Notification</div>
+  <div class="comm-cell header">Feature Store</div>
+
+  <div class="comm-cell row-header">MQTT Ingestion</div>
+  <div class="comm-cell yes">SYNC</div><div class="comm-cell no">—</div><div class="comm-cell async">ASYNC</div><div class="comm-cell no">—</div><div class="comm-cell no">—</div><div class="comm-cell no">—</div><div class="comm-cell no">—</div>
+
+  <div class="comm-cell row-header">HTTP Ingestion</div>
+  <div class="comm-cell yes">SYNC</div><div class="comm-cell yes">SYNC</div><div class="comm-cell async">ASYNC</div><div class="comm-cell no">—</div><div class="comm-cell no">—</div><div class="comm-cell no">—</div><div class="comm-cell no">—</div>
+
+  <div class="comm-cell row-header">Feature Eng.</div>
+  <div class="comm-cell no">—</div><div class="comm-cell no">—</div><div class="comm-cell async">ASYNC</div><div class="comm-cell no">—</div><div class="comm-cell no">—</div><div class="comm-cell no">—</div><div class="comm-cell yes">SYNC</div>
+
+  <div class="comm-cell row-header">Rule Engine</div>
+  <div class="comm-cell no">—</div><div class="comm-cell yes">SYNC</div><div class="comm-cell async">ASYNC</div><div class="comm-cell no">—</div><div class="comm-cell no">—</div><div class="comm-cell no">—</div><div class="comm-cell no">—</div>
+
+  <div class="comm-cell row-header">Prediction Orch.</div>
+  <div class="comm-cell no">—</div><div class="comm-cell yes">SYNC</div><div class="comm-cell no">—</div><div class="comm-cell yes">SYNC</div><div class="comm-cell yes">SYNC</div><div class="comm-cell no">—</div><div class="comm-cell yes">SYNC</div>
+
+  <div class="comm-cell row-header">Alert State Svc</div>
+  <div class="comm-cell no">—</div><div class="comm-cell no">—</div><div class="comm-cell async">ASYNC</div><div class="comm-cell no">—</div><div class="comm-cell no">—</div><div class="comm-cell async">ASYNC</div><div class="comm-cell no">—</div>
+
+  <div class="comm-cell row-header">Training Job Svc</div>
+  <div class="comm-cell no">—</div><div class="comm-cell no">—</div><div class="comm-cell no">—</div><div class="comm-cell no">—</div><div class="comm-cell yes">SYNC</div><div class="comm-cell no">—</div><div class="comm-cell no">—</div>
+
+  <div class="comm-cell row-header"><span style="color:#e65100;font-weight:bold">[PY]</span> Drift Detection</div>
+  <div class="comm-cell no">—</div><div class="comm-cell no">—</div><div class="comm-cell async">ASYNC</div><div class="comm-cell no">—</div><div class="comm-cell yes">SYNC</div><div class="comm-cell no">—</div><div class="comm-cell no">—</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  WRITE PATH DATA FLOW                                   -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="sec"><span>END-TO-END WRITE PATH — SENSOR DATA FLOW</span></div>
+<div class="flow">
+  <div class="flow-step"><div class="flow-num">1</div><div class="flow-svc">Device</div><div class="flow-action">MQTT PUBLISH / HTTP POST</div><div class="flow-detail">Sensor sends payload to broker or REST endpoint with API key</div></div>
+  <div class="flow-step"><div class="flow-num">2</div><div class="flow-svc">Auth Service</div><div class="flow-action">VALIDATE API KEY</div><div class="flow-detail">Token checked against Redis cache. Reject if invalid or rate-limited</div></div>
+  <div class="flow-step"><div class="flow-num">3</div><div class="flow-svc">Ingestion Service</div><div class="flow-action">PARSE + SCHEMA CHECK</div><div class="flow-detail">Payload parsed, validated against channel schema, published to Kafka</div></div>
+  <div class="flow-step"><div class="flow-num">4</div><div class="flow-svc">Flink Workers</div><div class="flow-action">NORMALIZE + FEATURE ENG.</div><div class="flow-detail">Cleaned data written to storage. Features computed for ML inference</div></div>
+  <div class="flow-step"><div class="flow-num">5</div><div class="flow-svc">Prediction Orch.</div><div class="flow-action">INFERENCE</div><div class="flow-detail">Features sent to Triton. Predictions stored alongside actuals in InfluxDB</div></div>
+  <div class="flow-step"><div class="flow-num">6</div><div class="flow-svc">Rule + Alert Engine</div><div class="flow-action">EVALUATE RULES</div><div class="flow-detail">Both actual and predicted values checked against user alert rules</div></div>
+  <div class="flow-step"><div class="flow-num">7</div><div class="flow-svc">Realtime Push Svc</div><div class="flow-action">PUSH TO DASHBOARD</div><div class="flow-detail">Live update + prediction pushed to subscribed WebSocket clients</div></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  DESIGN PRINCIPLES                                      -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="sec"><span>BACKEND DESIGN PRINCIPLES</span></div>
+<div class="p-grid">
+  <div class="p-cell"><div class="p-title">Domain Ownership</div><div class="p-desc">Each service owns exactly one domain and one database. No shared databases between services. Cross-domain reads go through the owning service's API.</div></div>
+  <div class="p-cell"><div class="p-title">Async by Default</div><div class="p-desc">All high-volume paths (sensor write, alerts, predictions) use Kafka for async decoupling. Sync gRPC only for low-latency user-facing reads.</div></div>
+  <div class="p-cell"><div class="p-title">Idempotent Writes</div><div class="p-desc">Every Kafka consumer is idempotent. Re-processing a message produces the same result. Enables safe replay on failure with no duplicate data.</div></div>
+  <div class="p-cell"><div class="p-title">Thin API Gateway</div><div class="p-desc">API Gateway handles only auth, rate limiting, and routing. No business logic. Business rules live inside the owning microservice.</div></div>
+  <div class="p-cell"><div class="p-title">Separate Read/Write Models</div><div class="p-desc">Write path (Kafka → Flink → InfluxDB) is fully decoupled from read path (Query Service → InfluxDB/Cassandra). Each optimized independently.</div></div>
+  <div class="p-cell"><div class="p-title">Config as Data</div><div class="p-desc">Channel schema, alert rules, model assignments are stored data in Config/Channel Service, not code. Users change behavior at runtime without redeployment.</div></div>
+</div>
+
+<p class="footer">THINGSPEAK BACKEND SERVICES · Go + Python ML · MICROSERVICES ARCHITECTURE · 2026</p>
+</body>
+</html>

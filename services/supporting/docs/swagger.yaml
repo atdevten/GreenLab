@@ -1,0 +1,418 @@
+basePath: /
+definitions:
+  http.AuditEventResponse:
+    properties:
+      created_at:
+        type: string
+      event_type:
+        type: string
+      id:
+        type: string
+      ip_address:
+        type: string
+      payload:
+        format: base64
+        type: string
+      resource_id:
+        type: string
+      resource_type:
+        type: string
+      tenant_id:
+        type: string
+      user_agent:
+        type: string
+      user_id:
+        type: string
+    type: object
+  http.CreateStreamRequest:
+    properties:
+      description:
+        type: string
+      device_id:
+        type: string
+      name:
+        type: string
+      protocol:
+        type: string
+      source_url:
+        type: string
+      workspace_id:
+        type: string
+    required:
+    - device_id
+    - name
+    - protocol
+    - workspace_id
+    type: object
+  http.PresignedURLResponse:
+    properties:
+      expires_at:
+        type: string
+      url:
+        type: string
+    type: object
+  http.StreamResponse:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      device_id:
+        type: string
+      duration_sec:
+        type: integer
+      id:
+        type: string
+      name:
+        type: string
+      protocol:
+        type: string
+      source_url:
+        type: string
+      status:
+        type: string
+      thumbnail_url:
+        type: string
+      workspace_id:
+        type: string
+    type: object
+  http.UpdateStreamStatusRequest:
+    properties:
+      status:
+        type: string
+    required:
+    - status
+    type: object
+host: localhost:8007
+info:
+  contact: {}
+  description: Video stream management and audit event service for the GreenLab IoT
+    platform.
+  title: GreenLab Supporting API
+  version: "1.0"
+paths:
+  /api/v1/audit/events:
+    get:
+      parameters:
+      - description: Filter by resource type
+        in: query
+        name: resource_type
+        type: string
+      - description: Search in user_name, action, target (case-insensitive)
+        in: query
+        name: search
+        type: string
+      - description: Set to 'csv' for CSV export
+        in: query
+        name: format
+        type: string
+      - description: Page size
+        in: query
+        name: limit
+        type: integer
+      - description: Page offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/http.AuditEventResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List audit events for the authenticated tenant
+      tags:
+      - audit
+  /api/v1/audit/events/{id}:
+    get:
+      parameters:
+      - description: Audit Event ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.AuditEventResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get an audit event by ID
+      tags:
+      - audit
+  /api/v1/audit/events/resource:
+    get:
+      parameters:
+      - description: Resource type (e.g. device, channel)
+        in: query
+        name: resource_type
+        required: true
+        type: string
+      - description: Resource ID
+        in: query
+        name: resource_id
+        required: true
+        type: string
+      - description: Page size
+        in: query
+        name: limit
+        type: integer
+      - description: Page offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/http.AuditEventResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List audit events for a specific resource
+      tags:
+      - audit
+  /api/v1/streams:
+    get:
+      parameters:
+      - description: Filter by device ID
+        in: query
+        name: device_id
+        type: string
+      - description: Page size
+        in: query
+        name: limit
+        type: integer
+      - description: Page offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/http.StreamResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List video streams for a device
+      tags:
+      - streams
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Stream details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.CreateStreamRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/http.StreamResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Register a new video stream
+      tags:
+      - streams
+  /api/v1/streams/{id}:
+    delete:
+      parameters:
+      - description: Stream ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a video stream
+      tags:
+      - streams
+    get:
+      parameters:
+      - description: Stream ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.StreamResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a video stream by ID
+      tags:
+      - streams
+  /api/v1/streams/{id}/download-url:
+    get:
+      parameters:
+      - description: Stream ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.PresignedURLResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a pre-signed download URL for a stream recording
+      tags:
+      - streams
+  /api/v1/streams/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Stream ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New status
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.UpdateStreamStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.StreamResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update the status of a video stream
+      tags:
+      - streams
+  /api/v1/streams/{id}/upload-url:
+    get:
+      parameters:
+      - description: Stream ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'Content type (default: video/mp4)'
+        in: query
+        name: content_type
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.PresignedURLResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a pre-signed upload URL for a stream recording
+      tags:
+      - streams
+  /health:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Health check
+      tags:
+      - health
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

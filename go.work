@@ -1,0 +1,12 @@
+go 1.22
+
+use (
+	./services/alert-notification
+	./services/device-registry
+	./services/iam
+	./services/ingestion
+	./services/normalization
+	./services/query-realtime
+	./services/supporting
+	./shared
+)

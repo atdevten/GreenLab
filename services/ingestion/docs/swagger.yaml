@@ -1,0 +1,156 @@
+basePath: /
+definitions:
+  http.BulkIngestRequest:
+    properties:
+      readings:
+        items:
+          $ref: '#/definitions/http.IngestRequest'
+        type: array
+    required:
+    - readings
+    type: object
+  http.IngestRequest:
+    properties:
+      fields:
+        additionalProperties:
+          type: number
+        type: object
+      tags:
+        additionalProperties:
+          type: string
+        type: object
+      timestamp:
+        type: string
+    required:
+    - fields
+    type: object
+  http.IngestResponse:
+    properties:
+      accepted:
+        type: integer
+      written_at:
+        type: string
+    type: object
+host: localhost:8003
+info:
+  contact: {}
+  description: Telemetry ingestion service for the GreenLab IoT platform.
+  title: GreenLab Ingestion API
+  version: "1.0"
+paths:
+  /health:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Health check
+      tags:
+      - health
+  /v1/channels/{channel_id}/data:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Channel ID
+        in: path
+        name: channel_id
+        required: true
+        type: string
+      - description: Telemetry reading
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.IngestRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/http.IngestResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Ingest a single telemetry reading
+      tags:
+      - ingestion
+  /v1/channels/{channel_id}/data/bulk:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Channel ID
+        in: path
+        name: channel_id
+        required: true
+        type: string
+      - description: Batch of readings
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.BulkIngestRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/http.IngestResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Ingest a batch of telemetry readings
+      tags:
+      - ingestion
+securityDefinitions:
+  ApiKeyAuth:
+    description: Device API key for telemetry ingestion.
+    in: header
+    name: X-API-Key
+    type: apiKey
+swagger: "2.0"

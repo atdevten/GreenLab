@@ -1,0 +1,27 @@
+# Secret keys — NEVER commit these
+keys/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Go build artifacts
+*.out
+coverage.out
+dist/
+build/
+
+# Go test cache
+*.test
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swo
+
+# macOS
+.DS_Store
+.gstack/

@@ -1,0 +1,226 @@
+basePath: /
+definitions:
+  http.DataPointResponse:
+    properties:
+      field:
+        type: string
+      timestamp:
+        type: string
+      value:
+        type: number
+    type: object
+  http.LatestReadingResponse:
+    properties:
+      channel_id:
+        type: string
+      field_name:
+        type: string
+      timestamp:
+        type: string
+      value:
+        type: number
+    type: object
+  http.QueryResponse:
+    properties:
+      channel_id:
+        type: string
+      count:
+        type: integer
+      data_points:
+        items:
+          $ref: '#/definitions/http.DataPointResponse'
+        type: array
+      end:
+        type: string
+      field_name:
+        type: string
+      start:
+        type: string
+    type: object
+host: localhost:8004
+info:
+  contact: {}
+  description: Time-series query and real-time streaming service for the GreenLab
+    IoT platform.
+  title: GreenLab Query-Realtime API
+  version: "1.0"
+paths:
+  /api/v1/query:
+    get:
+      parameters:
+      - description: Channel ID (UUID)
+        in: query
+        name: channel_id
+        required: true
+        type: string
+      - description: Field name to filter
+        in: query
+        name: field
+        type: string
+      - description: Start time (RFC3339)
+        in: query
+        name: start
+        type: string
+      - description: End time (RFC3339)
+        in: query
+        name: end
+        type: string
+      - description: Max number of points
+        in: query
+        name: limit
+        type: integer
+      - description: Aggregation function (mean, max, min, sum)
+        in: query
+        name: aggregate
+        type: string
+      - description: Aggregation window (e.g. 1m, 5m, 1h)
+        in: query
+        name: window
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.QueryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Query time-series data for a channel
+      tags:
+      - query
+  /api/v1/query/latest:
+    get:
+      parameters:
+      - description: Channel ID (UUID)
+        in: query
+        name: channel_id
+        required: true
+        type: string
+      - description: Field name
+        in: query
+        name: field
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.LatestReadingResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get the latest reading for a channel field
+      tags:
+      - query
+  /api/v1/sse:
+    get:
+      parameters:
+      - description: Channel ID to subscribe to
+        in: query
+        name: channel_id
+        required: true
+        type: string
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: 'Streams SSE events with Content-Type: text/event-stream'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Subscribe to real-time readings via Server-Sent Events
+      tags:
+      - realtime
+  /api/v1/stats:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get real-time hub statistics
+      tags:
+      - realtime
+  /api/v1/ws:
+    get:
+      parameters:
+      - description: Channel ID to subscribe to
+        in: query
+        name: channel_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "101":
+          description: Switching Protocols — upgrades to WebSocket connection
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Subscribe to real-time readings via WebSocket
+      tags:
+      - realtime
+  /health:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Health check
+      tags:
+      - health
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

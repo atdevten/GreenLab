@@ -1,0 +1,657 @@
+basePath: /
+definitions:
+  http.ChannelResponse:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      device_id:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      updated_at:
+        type: string
+      visibility:
+        type: string
+      workspace_id:
+        type: string
+    type: object
+  http.CreateChannelRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      visibility:
+        type: string
+      workspace_id:
+        type: string
+    required:
+    - name
+    - workspace_id
+    type: object
+  http.CreateDeviceRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      workspace_id:
+        type: string
+    required:
+    - name
+    - workspace_id
+    type: object
+  http.CreateFieldRequest:
+    properties:
+      channel_id:
+        type: string
+      description:
+        type: string
+      field_type:
+        type: string
+      label:
+        type: string
+      name:
+        type: string
+      position:
+        type: integer
+      unit:
+        type: string
+    required:
+    - channel_id
+    - name
+    - position
+    type: object
+  http.DeviceResponse:
+    properties:
+      api_key:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      last_seen_at:
+        type: string
+      metadata:
+        type: object
+      name:
+        type: string
+      status:
+        type: string
+      updated_at:
+        type: string
+      workspace_id:
+        type: string
+    type: object
+  http.FieldResponse:
+    properties:
+      channel_id:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      field_type:
+        type: string
+      id:
+        type: string
+      label:
+        type: string
+      name:
+        type: string
+      position:
+        type: integer
+      unit:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  http.UpdateChannelRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      visibility:
+        type: string
+    type: object
+  http.UpdateDeviceRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      status:
+        type: string
+    type: object
+  http.UpdateFieldRequest:
+    properties:
+      description:
+        type: string
+      label:
+        type: string
+      name:
+        type: string
+      unit:
+        type: string
+    type: object
+host: localhost:8002
+info:
+  contact: {}
+  description: Device, channel, and field management for the GreenLab IoT platform.
+  title: GreenLab Device Registry API
+  version: "1.0"
+paths:
+  /api/v1/channels:
+    get:
+      parameters:
+      - description: Workspace ID (required if device_id not provided)
+        in: query
+        name: workspace_id
+        type: string
+      - description: Device ID filter
+        in: query
+        name: device_id
+        type: string
+      - description: Page size
+        in: query
+        name: limit
+        type: integer
+      - description: Page offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/http.ChannelResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List channels in a workspace or for a device
+      tags:
+      - channels
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Channel details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.CreateChannelRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/http.ChannelResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new channel
+      tags:
+      - channels
+  /api/v1/channels/{id}:
+    delete:
+      parameters:
+      - description: Channel ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a channel
+      tags:
+      - channels
+    get:
+      parameters:
+      - description: Channel ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.ChannelResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a channel by ID
+      tags:
+      - channels
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Channel ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Update fields
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.UpdateChannelRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.ChannelResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a channel
+      tags:
+      - channels
+  /api/v1/devices:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: query
+        name: workspace_id
+        required: true
+        type: string
+      - description: Page size
+        in: query
+        name: limit
+        type: integer
+      - description: Page offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/http.DeviceResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List devices in a workspace
+      tags:
+      - devices
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Device details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.CreateDeviceRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/http.DeviceResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Register a new device
+      tags:
+      - devices
+  /api/v1/devices/{id}:
+    delete:
+      parameters:
+      - description: Device ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a device
+      tags:
+      - devices
+    get:
+      parameters:
+      - description: Device ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.DeviceResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a device by ID
+      tags:
+      - devices
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Device ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Update fields
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.UpdateDeviceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.DeviceResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a device
+      tags:
+      - devices
+  /api/v1/devices/{id}/rotate-key:
+    post:
+      parameters:
+      - description: Device ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.DeviceResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Rotate the API key for a device
+      tags:
+      - devices
+  /api/v1/fields:
+    get:
+      parameters:
+      - description: Channel ID
+        in: query
+        name: channel_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/http.FieldResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List fields for a channel
+      tags:
+      - fields
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Field details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.CreateFieldRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/http.FieldResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new field on a channel
+      tags:
+      - fields
+  /api/v1/fields/{id}:
+    delete:
+      parameters:
+      - description: Field ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a field
+      tags:
+      - fields
+    get:
+      parameters:
+      - description: Field ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.FieldResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a field by ID
+      tags:
+      - fields
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Field ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Update fields
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.UpdateFieldRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.FieldResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a field
+      tags:
+      - fields
+  /api/v1/workspaces/{id}/devices:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Page size
+        in: query
+        name: limit
+        type: integer
+      - description: Page offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/http.DeviceResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List devices scoped by workspace URL param
+      tags:
+      - workspaces
+  /health:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Health check
+      tags:
+      - health
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

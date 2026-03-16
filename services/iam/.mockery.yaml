@@ -1,0 +1,18 @@
+with-expecter: true
+packages:
+  github.com/greenlab/identity/internal/domain/auth:
+    config:
+      dir: internal/mocks/auth
+      outpkg: mockauth
+    interfaces:
+      UserRepository:
+      TokenRepository:
+      CacheRepository:
+      EventPublisher:
+  github.com/greenlab/identity/internal/domain/tenant:
+    config:
+      dir: internal/mocks/tenant
+      outpkg: mocktenant
+    interfaces:
+      OrgRepository:
+      WorkspaceRepository:

@@ -1,0 +1,307 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: greenlab
+      POSTGRES_PASSWORD: greenlab
+      POSTGRES_DB: greenlab
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Creates per-service databases on first container start (TODO-005).
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U greenlab"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  influxdb:
+    image: influxdb:2.7-alpine
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: adminpassword
+      DOCKER_INFLUXDB_INIT_ORG: greenlab
+      DOCKER_INFLUXDB_INIT_BUCKET: telemetry
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: my-super-secret-token
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  iam:
+    build:
+      context: .
+      dockerfile: services/iam/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      PORT: "8001"
+      DSN: "postgres://greenlab:greenlab@postgres:5432/iam_db?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      KAFKA_BROKERS: "kafka:9092"
+      JWT_PRIVATE_KEY_PATH: "/keys/private.pem"
+      JWT_PUBLIC_KEY_PATH: "/keys/public.pem"
+    volumes:
+      - ./keys:/keys:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  device-registry:
+    build:
+      context: .
+      dockerfile: services/device-registry/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      PORT: "8002"
+      DSN: "postgres://greenlab:greenlab@postgres:5432/device_registry_db?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      KAFKA_BROKERS: "kafka:9092"
+      JWT_PUBLIC_KEY_PATH: "/keys/public.pem"
+    volumes:
+      - ./keys:/keys:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  ingestion:
+    build:
+      context: .
+      dockerfile: services/ingestion/Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      PORT: "8003"
+      # NOTE: ingestion reads the devices table for API-key validation.
+      # This cross-service DB access is a known shortcut; replace with a
+      # service-to-service API call once the auth model matures.
+      DSN: "postgres://greenlab:greenlab@postgres:5432/device_registry_db?sslmode=disable"
+      INFLUXDB_URL: "http://influxdb:8086"
+      INFLUXDB_TOKEN: "my-super-secret-token"
+      INFLUXDB_ORG: "greenlab"
+      INFLUXDB_BUCKET: "telemetry"
+      REDIS_ADDR: "redis:6379"
+      KAFKA_BROKERS: "kafka:9092"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      influxdb:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  normalization:
+    build:
+      context: .
+      dockerfile: services/normalization/Dockerfile
+    ports:
+      - "8006:8006"
+    environment:
+      PORT: "8006"
+      INFLUXDB_URL: "http://influxdb:8086"
+      INFLUXDB_TOKEN: "my-super-secret-token"
+      INFLUXDB_ORG: "greenlab"
+      INFLUXDB_BUCKET: "telemetry"
+      KAFKA_BROKERS: "kafka:9092"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8006/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      influxdb:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+
+  query-realtime:
+    build:
+      context: .
+      dockerfile: services/query-realtime/Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      PORT: "8004"
+      INFLUXDB_URL: "http://influxdb:8086"
+      INFLUXDB_TOKEN: "my-super-secret-token"
+      INFLUXDB_ORG: "greenlab"
+      INFLUXDB_BUCKET: "telemetry"
+      REDIS_ADDR: "redis:6379"
+      KAFKA_BROKERS: "kafka:9092"
+      JWT_PUBLIC_KEY_PATH: "/keys/public.pem"
+    volumes:
+      - ./keys:/keys:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      influxdb:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  alert-notification:
+    build:
+      context: .
+      dockerfile: services/alert-notification/Dockerfile
+    ports:
+      - "8005:8005"
+    environment:
+      PORT: "8005"
+      DSN: "postgres://greenlab:greenlab@postgres:5432/alert_db?sslmode=disable"
+      KAFKA_BROKERS: "kafka:9092"
+      SMTP_HOST: "smtp.example.com"
+      SMTP_PORT: "587"
+      SMTP_USERNAME: ""
+      SMTP_PASSWORD: ""
+      SMTP_FROM: "noreply@greenlab.io"
+      JWT_PUBLIC_KEY_PATH: "/keys/public.pem"
+    volumes:
+      - ./keys:/keys:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  supporting:
+    build:
+      context: .
+      dockerfile: services/supporting/Dockerfile
+    ports:
+      - "8007:8007"
+    environment:
+      PORT: "8007"
+      DSN: "postgres://greenlab:greenlab@postgres:5432/supporting_db?sslmode=disable"
+      KAFKA_BROKERS: "kafka:9092"
+      AWS_REGION: "us-east-1"
+      S3_BUCKET: "greenlab-video"
+      JWT_PUBLIC_KEY_PATH: "/keys/public.pem"
+    volumes:
+      - ./keys:/keys:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8007/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    depends_on:
+      iam:
+        condition: service_healthy
+      device-registry:
+        condition: service_healthy
+      ingestion:
+        condition: service_healthy
+      normalization:
+        condition: service_healthy
+      query-realtime:
+        condition: service_healthy
+      alert-notification:
+        condition: service_healthy
+      supporting:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  influxdb_data:

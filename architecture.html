@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GreenLab @ Billion Scale — v3 · AI + Prediction + Fine-tuning</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: monospace; background: #fff; color: #111; padding: 28px; font-size: 12px; }
+
+  h1 { font-size: 17px; text-align: center; margin-bottom: 4px; letter-spacing: 1px; }
+  .subtitle { text-align: center; font-size: 11px; color: #666; margin-bottom: 4px; }
+  .version { text-align: center; font-size: 10px; color: #999; margin-bottom: 22px; letter-spacing: 2px; }
+
+  /* Stats */
+  .stats { display: flex; border: 1.5px solid #111; margin-bottom: 24px; }
+  .stat { flex: 1; padding: 8px 0; text-align: center; border-right: 1px solid #111; }
+  .stat:last-child { border-right: none; }
+  .stat-val { font-size: 15px; font-weight: bold; }
+  .stat-lbl { font-size: 9px; color: #555; margin-top: 2px; }
+
+  /* Section headers */
+  .section-title {
+    font-size: 10px; font-weight: bold; letter-spacing: 3px;
+    color: #fff; background: #111;
+    padding: 5px 12px; margin-top: 18px; margin-bottom: 0;
+    display: flex; justify-content: space-between; align-items: center;
+    border: 1.5px solid #111;
+  }
+  .section-title .tag {
+    background: #fff; color: #111;
+    font-size: 9px; padding: 1px 6px; font-weight: bold;
+  }
+  .section-title .tag.new { background: #ffcc00; color: #111; }
+  .section-title .tag.ai { background: #00ccff; color: #111; }
+
+  /* Full grid layer */
+  .layer-body {
+    display: grid;
+    border: 1.5px solid #111; border-top: none;
+  }
+  .grid-4 { grid-template-columns: repeat(4, 1fr); }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+
+  .node {
+    padding: 10px 12px;
+    border-right: 1px solid #ddd;
+    border-bottom: 1px solid #ddd;
+  }
+  .node:last-child { border-right: none; }
+  .node.last-row { border-bottom: none; }
+  .node.dark { background: #111; color: #fff; }
+  .node.dark .node-tech { color: #aaa; }
+  .node.dark .node-desc { color: #888; }
+  .node.highlight { background: #fffbe6; border-left: 3px solid #f0a500; }
+  .node.ai-highlight { background: #e6f7ff; border-left: 3px solid #00aaff; }
+
+  .node-title { font-weight: bold; font-size: 11px; margin-bottom: 3px; }
+  .node-tech { font-size: 10px; color: #555; margin-bottom: 3px; font-style: italic; }
+  .node-desc { font-size: 10px; color: #777; line-height: 1.5; }
+
+  /* Split layout */
+  .split-wrap { display: grid; grid-template-columns: 1fr 20px 1fr; }
+  .split-left { border: 1.5px solid #111; border-right: none; border-top: none; }
+  .split-right { border: 1.5px solid #111; border-top: none; }
+  .split-divider {
+    border-top: none; border-bottom: 1.5px solid #111;
+    display: flex; align-items: center; justify-content: center;
+    background: #fff;
+  }
+  .divider-text { writing-mode: vertical-rl; font-size: 8px; letter-spacing: 2px; color: #ccc; }
+
+  .sub-header {
+    background: #444; color: #fff;
+    font-size: 9px; letter-spacing: 2px; font-weight: bold;
+    padding: 4px 10px;
+    border-bottom: 1px solid #ddd;
+  }
+  .sub-header.light { background: #e0e0e0; color: #111; }
+
+  /* Arrows */
+  .arrow { text-align: center; font-size: 16px; padding: 3px 0; }
+  .split-arrow { display: grid; grid-template-columns: 1fr 20px 1fr; }
+  .split-arrow .a { text-align: center; font-size: 16px; padding: 3px 0; }
+
+  /* Merge banner */
+  .merge-banner {
+    border: 1.5px solid #111; border-top: none;
+    background: #f5f5f5;
+  }
+  .merge-banner-header {
+    background: #555; color: #fff;
+    font-size: 9px; letter-spacing: 2px; font-weight: bold;
+    padding: 4px 12px; text-align: center;
+  }
+
+  /* AI Flow diagram */
+  .ai-flow {
+    display: flex; align-items: stretch;
+    border: 1.5px solid #111; border-top: none;
+    overflow: hidden;
+  }
+  .ai-step {
+    flex: 1;
+    padding: 10px 12px;
+    border-right: 1px solid #ddd;
+    position: relative;
+  }
+  .ai-step:last-child { border-right: none; }
+  .ai-step-num {
+    font-size: 18px; font-weight: bold; color: #ddd;
+    position: absolute; top: 8px; right: 10px;
+  }
+  .ai-step-title { font-weight: bold; font-size: 11px; margin-bottom: 3px; color: #111; }
+  .ai-step-tech { font-size: 9px; color: #555; font-style: italic; margin-bottom: 4px; }
+  .ai-step-desc { font-size: 9px; color: #666; line-height: 1.5; }
+  .ai-step.active { background: #e6f7ff; }
+  .ai-step.user-action { background: #fff8e1; }
+
+  /* Fine-tuning flow */
+  .ft-flow {
+    display: grid; grid-template-columns: repeat(6, 1fr);
+    border: 1.5px solid #111; border-top: none;
+  }
+  .ft-step {
+    padding: 10px 10px;
+    border-right: 1px solid #ddd;
+    text-align: center;
+  }
+  .ft-step:last-child { border-right: none; }
+  .ft-icon { font-size: 20px; margin-bottom: 4px; }
+  .ft-title { font-weight: bold; font-size: 10px; margin-bottom: 3px; }
+  .ft-desc { font-size: 9px; color: #777; line-height: 1.4; }
+  .ft-arrow { font-size: 16px; color: #bbb; display: flex; align-items: center; justify-content: center; }
+
+  /* Model cards */
+  .model-cards {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    border: 1.5px solid #111; border-top: none;
+  }
+  .model-card {
+    padding: 10px 12px;
+    border-right: 1px solid #ddd;
+  }
+  .model-card:last-child { border-right: none; }
+  .model-name { font-weight: bold; font-size: 11px; margin-bottom: 3px; }
+  .model-use { font-size: 9px; color: #00aacc; margin-bottom: 3px; font-style: italic; }
+  .model-desc { font-size: 9px; color: #777; line-height: 1.4; }
+  .model-badge {
+    display: inline-block; font-size: 8px; padding: 1px 4px;
+    border: 1px solid #111; margin-top: 4px; margin-right: 3px;
+  }
+
+  /* Principles */
+  .principles-body { display: grid; grid-template-columns: repeat(3, 1fr); border: 1.5px solid #111; border-top: none; }
+  .principle { padding: 10px 12px; border-right: 1px dashed #bbb; border-bottom: 1px dashed #bbb; }
+  .principle:nth-child(3n) { border-right: none; }
+  .principle:nth-last-child(-n+3) { border-bottom: none; }
+  .principle-title { font-weight: bold; font-size: 10px; margin-bottom: 3px; }
+  .principle-desc { font-size: 9px; color: #666; line-height: 1.5; }
+
+  .footer { text-align: center; font-size: 9px; color: #aaa; margin-top: 18px; letter-spacing: 2px; }
+
+  .badge { display: inline-block; font-size: 8px; font-weight: bold; padding: 1px 5px; border: 1px solid #111; margin-left: 6px; vertical-align: middle; }
+  .badge.new { background: #ffcc00; color: #111; }
+  .badge.ai { background: #00ccff; color: #111; }
+</style>
+</head>
+<body>
+
+<h1>THINGSPEAK — BILLION SCALE <span class="badge new">v3</span> <span class="badge ai">AI</span></h1>
+<p class="subtitle">Unified IoT · Sensor + Camera · Prediction Models · User Fine-tuning</p>
+<p class="version">▲ NEW IN v3: AI PREDICTION ENGINE + USER FINE-TUNING LAYER ▲</p>
+
+<!-- Stats -->
+<div class="stats">
+  <div class="stat"><div class="stat-val">1B+</div><div class="stat-lbl">Sensors & Cameras</div></div>
+  <div class="stat"><div class="stat-val">10M+</div><div class="stat-lbl">Msg/sec</div></div>
+  <div class="stat"><div class="stat-val">10Tbps+</div><div class="stat-lbl">Video Throughput</div></div>
+  <div class="stat"><div class="stat-val">&lt;100ms</div><div class="stat-lbl">Prediction Latency</div></div>
+  <div class="stat"><div class="stat-val">1000s</div><div class="stat-lbl">Fine-tuned Models</div></div>
+  <div class="stat"><div class="stat-val">99.99%</div><div class="stat-lbl">Uptime SLA</div></div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!--  LAYER 1+2: DEVICE + INGESTION (condensed)  -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section-title"><span>[ 1 ]  DEVICE + INGESTION LAYER</span><span class="tag">DUAL TRACK — same as v2</span></div>
+<div class="split-wrap">
+  <div class="split-left">
+    <div class="sub-header light">SENSOR TRACK — MQTT / HTTP / CoAP</div>
+    <div class="node last-row"><div class="node-title">IoT Sensors + Edge Aggregators</div><div class="node-tech">ESP32 / Arduino / Greengrass → MQTT Broker (EMQ X) → Auth Shield</div><div class="node-desc">Billions of devices. Pre-aggregate at edge, authenticate at gateway, rate-limit per device key.</div></div>
+  </div>
+  <div class="split-divider"><div class="divider-text">INGEST</div></div>
+  <div class="split-right">
+    <div class="sub-header">CAMERA TRACK — RTSP / WebRTC / HLS</div>
+    <div class="node last-row"><div class="node-title">IP Cameras + Edge AI Cameras</div><div class="node-tech">RTSP/RTMP → Ingest Server (SRS/Wowza) → Transcoding (FFmpeg) → Video AI (Jetson)</div><div class="node-desc">Edge cameras run lightweight CV. Only events + clips uploaded. Full streams buffered in Redis.</div></div>
+  </div>
+</div>
+
+<div class="arrow">↓</div>
+
+<!-- ═══════════════════════════════ -->
+<!--  LAYER 3: STREAMING PROCESSING  -->
+<!-- ═══════════════════════════════ -->
+<div class="section-title"><span>[ 2 ]  UNIFIED STREAMING LAYER</span><span class="tag">KAFKA + FLINK</span></div>
+<div class="layer-body grid-4">
+  <div class="node last-row"><div class="node-title">Apache Kafka</div><div class="node-tech">Partitioned by sensor/camera ID</div><div class="node-desc">All events — sensor telemetry + video AI events — flow through Kafka. Single durable log.</div></div>
+  <div class="node last-row"><div class="node-title">Apache Flink</div><div class="node-tech">Stateful stream processor</div><div class="node-desc">Windowing, aggregation, cross-stream correlation (sensor + video events joined).</div></div>
+  <div class="node last-row"><div class="node-title">Feature Engineering Service</div><div class="node-tech">Flink + Feature Store (Feast)</div><div class="node-desc">Compute rolling averages, lag features, FFT — real-time feature vectors for ML inference.</div></div>
+  <div class="node last-row"><div class="node-title">Alert & Rules Engine</div><div class="node-tech">Flink CEP / Drools</div><div class="node-desc">Rule-based alerts run in parallel with ML predictions. Both can trigger notifications.</div></div>
+</div>
+
+<div class="arrow">↓</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!--  NEW: AI PREDICTION ENGINE                          -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="section-title" style="background:#005fcc;">
+  <span>[ 3 ]  AI PREDICTION ENGINE</span>
+  <span class="tag new">NEW IN v3</span>
+</div>
+
+<!-- Foundation Models available -->
+<div style="border:1.5px solid #111; border-top:none; background:#e6f0ff;">
+  <div style="padding:5px 12px; font-size:9px; letter-spacing:2px; font-weight:bold; color:#005fcc; border-bottom:1px solid #cce0ff;">
+    FOUNDATION MODELS — PRE-TRAINED, READY TO USE OR FINE-TUNE
+  </div>
+  <div class="model-cards" style="border:none;">
+    <div class="model-card">
+      <div class="model-name">TimeSeries Transformer</div>
+      <div class="model-use">Sensor forecasting</div>
+      <div class="model-desc">Predict next N values of any sensor channel. Trained on millions of public IoT datasets.</div>
+      <div><span class="model-badge">regression</span><span class="model-badge">forecasting</span></div>
+    </div>
+    <div class="model-card">
+      <div class="model-name">Anomaly Detector</div>
+      <div class="model-use">Outlier / fault detection</div>
+      <div class="model-desc">Unsupervised autoencoder. Flags unusual sensor patterns. Zero labeling needed out-of-box.</div>
+      <div><span class="model-badge">unsupervised</span><span class="model-badge">autoencoder</span></div>
+    </div>
+    <div class="model-card">
+      <div class="model-name">Video Event Classifier</div>
+      <div class="model-use">Camera stream analysis</div>
+      <div class="model-desc">Classify motion events: fire, intrusion, crowd, fall. Based on CLIP / ViT foundation model.</div>
+      <div><span class="model-badge">vision</span><span class="model-badge">classification</span></div>
+    </div>
+    <div class="model-card">
+      <div class="model-name">Multimodal Fusion Model</div>
+      <div class="model-use">Sensor + camera together</div>
+      <div class="model-desc">Combines sensor features + video embeddings. Predicts complex events no single source could catch.</div>
+      <div><span class="model-badge">multimodal</span><span class="model-badge">fusion</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Prediction flow -->
+<div style="border:1.5px solid #111; border-top:none;">
+  <div style="padding:4px 12px; font-size:9px; letter-spacing:2px; font-weight:bold; background:#ddd; border-bottom:1px solid #ccc;">
+    REAL-TIME PREDICTION PIPELINE
+  </div>
+  <div class="ai-flow">
+    <div class="ai-step">
+      <div class="ai-step-num">1</div>
+      <div class="ai-step-title">Feature Vector</div>
+      <div class="ai-step-tech">Feast Feature Store</div>
+      <div class="ai-step-desc">Real-time + historical features assembled per channel. Cached in Redis for low latency.</div>
+    </div>
+    <div class="ai-step active">
+      <div class="ai-step-num">2</div>
+      <div class="ai-step-title">Model Routing</div>
+      <div class="ai-step-tech">Model Registry (MLflow)</div>
+      <div class="ai-step-desc">Route to correct model version per channel. User's fine-tuned model takes priority over base model.</div>
+    </div>
+    <div class="ai-step active">
+      <div class="ai-step-num">3</div>
+      <div class="ai-step-title">Inference Server</div>
+      <div class="ai-step-tech">NVIDIA Triton / TorchServe</div>
+      <div class="ai-step-desc">GPU-accelerated inference. Batching + model ensembling. &lt;100ms p99 latency.</div>
+    </div>
+    <div class="ai-step">
+      <div class="ai-step-num">4</div>
+      <div class="ai-step-title">Prediction Store</div>
+      <div class="ai-step-tech">Redis + InfluxDB</div>
+      <div class="ai-step-desc">Predictions stored alongside sensor readings. Queryable like any channel field.</div>
+    </div>
+    <div class="ai-step">
+      <div class="ai-step-num">5</div>
+      <div class="ai-step-title">Prediction Alerts</div>
+      <div class="ai-step-tech">Alert Engine</div>
+      <div class="ai-step-desc">Trigger alerts on predicted values, not just observed ones. "Will exceed threshold in 10 min."</div>
+    </div>
+    <div class="ai-step">
+      <div class="ai-step-num">6</div>
+      <div class="ai-step-title">Feedback Logger</div>
+      <div class="ai-step-tech">Kafka → Label Store</div>
+      <div class="ai-step-desc">Log predictions + actual outcomes. Used for drift detection and fine-tuning datasets.</div>
+    </div>
+  </div>
+</div>
+
+<div class="arrow">↓</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!--  NEW: USER FINE-TUNING LAYER                        -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="section-title" style="background:#007a33;">
+  <span>[ 4 ]  USER FINE-TUNING LAYER</span>
+  <span class="tag new">NEW IN v3</span>
+</div>
+
+<!-- Fine-tuning UX flow -->
+<div style="border:1.5px solid #111; border-top:none; background:#f0fff5;">
+  <div style="padding:4px 12px; font-size:9px; letter-spacing:2px; font-weight:bold; background:#c8ecd6; border-bottom:1px solid #b0dfc0;">
+    USER JOURNEY — FROM RAW DATA TO CUSTOM MODEL
+  </div>
+  <div class="ft-flow" style="border:none;">
+    <div class="ft-step">
+      <div class="ft-icon">📊</div>
+      <div class="ft-title">1. Select Data</div>
+      <div class="ft-desc">User picks channel, date range, fields to use as input features and target to predict</div>
+    </div>
+    <div class="ft-step">
+      <div class="ft-icon">🏷️</div>
+      <div class="ft-title">2. Label / Annotate</div>
+      <div class="ft-desc">Label anomalies on chart UI, draw bounding boxes on video clips, or import CSV labels</div>
+    </div>
+    <div class="ft-step">
+      <div class="ft-icon">⚙️</div>
+      <div class="ft-title">3. Configure Training</div>
+      <div class="ft-desc">Choose base model, epochs, learning rate, validation split. Sensible defaults pre-filled.</div>
+    </div>
+    <div class="ft-step">
+      <div class="ft-icon">🚀</div>
+      <div class="ft-title">4. Launch Fine-tune</div>
+      <div class="ft-desc">Job submitted to training cluster. User sees live loss/accuracy charts as training runs.</div>
+    </div>
+    <div class="ft-step">
+      <div class="ft-icon">✅</div>
+      <div class="ft-title">5. Evaluate & Compare</div>
+      <div class="ft-desc">Compare new model vs base model on held-out data. View precision, recall, MAE side-by-side.</div>
+    </div>
+    <div class="ft-step">
+      <div class="ft-icon">🟢</div>
+      <div class="ft-title">6. Deploy to Channel</div>
+      <div class="ft-desc">One-click deploy. New model replaces base for this channel. Rollback available anytime.</div>
+    </div>
+  </div>
+</div>
+
+<!-- MLOps backend -->
+<div style="border:1.5px solid #111; border-top:none;">
+  <div style="padding:4px 12px; font-size:9px; letter-spacing:2px; font-weight:bold; background:#ddd; border-bottom:1px solid #ccc;">
+    MLOPS BACKEND — POWERING THE FINE-TUNING PIPELINE
+  </div>
+  <div class="layer-body grid-4" style="border:none;">
+    <div class="node last-row">
+      <div class="node-title">Training Cluster</div>
+      <div class="node-tech">Ray Train / Kubernetes GPU Jobs</div>
+      <div class="node-desc">Distributed fine-tuning with LoRA / adapter layers. Each user job isolated. Auto-scaled GPU nodes.</div>
+    </div>
+    <div class="node last-row">
+      <div class="node-title">Experiment Tracker</div>
+      <div class="node-tech">MLflow / Weights & Biases</div>
+      <div class="node-desc">Every run logged: hyperparams, metrics, artifacts. Users see full history of their experiments.</div>
+    </div>
+    <div class="node last-row">
+      <div class="node-title">Model Registry</div>
+      <div class="node-tech">MLflow Registry + S3</div>
+      <div class="node-desc">Versioned model store. Staging → Production promotion workflow. Per-user model namespace.</div>
+    </div>
+    <div class="node last-row">
+      <div class="node-title">Drift Monitor</div>
+      <div class="node-tech">Evidently AI / custom</div>
+      <div class="node-desc">Detect data/concept drift in production. Auto-alert user to re-train when model degrades.</div>
+    </div>
+  </div>
+</div>
+
+<div class="arrow">↓</div>
+
+<!-- ═══════════════════════════════ -->
+<!--  STORAGE                        -->
+<!-- ═══════════════════════════════ -->
+<div class="section-title"><span>[ 5 ]  STORAGE LAYER</span><span class="tag">TIERED — SENSOR + VIDEO + MODELS</span></div>
+<div class="split-wrap">
+  <div class="split-left">
+    <div class="sub-header light">SENSOR + PREDICTION STORE</div>
+    <div class="node"><div class="node-title">Hot — InfluxDB</div><div class="node-tech">Raw + predicted values, last 7 days</div><div class="node-desc">Sensor readings and model predictions stored as parallel fields in same time-series.</div></div>
+    <div class="node"><div class="node-title">Warm — Cassandra</div><div class="node-tech">Last 90 days</div><div class="node-desc">Historical actuals vs predictions. Used for model accuracy audit and fine-tune dataset generation.</div></div>
+    <div class="node last-row"><div class="node-title">Cold — S3 Parquet</div><div class="node-tech">Full history + training datasets</div><div class="node-desc">Long-term archive. Also stores labeled datasets, model checkpoints, and training artifacts.</div></div>
+  </div>
+  <div class="split-divider"><div class="divider-text">STORAGE</div></div>
+  <div class="split-right">
+    <div class="sub-header">VIDEO + MODEL STORE</div>
+    <div class="node"><div class="node-title">Live Buffer — Redis</div><div class="node-tech">Last 60 seconds HLS chunks</div><div class="node-desc">Real-time video ring buffer for live viewers and clip extraction for annotation.</div></div>
+    <div class="node"><div class="node-title">Video Segments — S3</div><div class="node-tech">Last 30 days, HLS manifests</div><div class="node-desc">Video clips linked to model training labels. Users can replay and re-label from dashboard.</div></div>
+    <div class="node last-row"><div class="node-title">Model Artifacts — S3</div><div class="node-tech">MLflow + versioned checkpoints</div><div class="node-desc">All user fine-tuned model weights stored here. Immutable versioning, rollback at any time.</div></div>
+  </div>
+</div>
+
+<div class="arrow">↓</div>
+
+<!-- ═══════════════════════════════ -->
+<!--  API + SERVING                  -->
+<!-- ═══════════════════════════════ -->
+<div class="section-title"><span>[ 6 ]  API, SERVING & DASHBOARD</span><span class="tag">USER-FACING</span></div>
+<div class="layer-body grid-4">
+  <div class="node last-row"><div class="node-title">Unified API Gateway</div><div class="node-tech">Kong / AWS API GW</div><div class="node-desc">Single entry point: sensor read/write, video stream, prediction query, fine-tune job APIs.</div></div>
+  <div class="node last-row ai-highlight"><div class="node-title">Prediction API</div><div class="node-tech">REST + WebSocket</div><div class="node-desc">GET /channels/:id/predict — returns next N predicted values from user's active model.</div></div>
+  <div class="node last-row highlight"><div class="node-title">Fine-tune Studio UI</div><div class="node-tech">React SPA</div><div class="node-desc">No-code UI: data selection, annotation tool, training config, live loss chart, model compare, deploy button.</div></div>
+  <div class="node last-row"><div class="node-title">Stream Delivery CDN</div><div class="node-tech">Cloudflare / Akamai</div><div class="node-desc">HLS video + prediction overlays served from edge. Annotated video clips for labeling also cached.</div></div>
+</div>
+
+<div class="arrow">↓</div>
+
+<!-- ═══════════════════════════════ -->
+<!--  INFRA                          -->
+<!-- ═══════════════════════════════ -->
+<div class="section-title"><span>[ 7 ]  INFRASTRUCTURE</span><span class="tag">OPERATIONS</span></div>
+<div class="layer-body grid-4">
+  <div class="node last-row"><div class="node-title">Kubernetes</div><div class="node-tech">CPU + GPU node pools</div><div class="node-desc">Separate pools: sensor processing (CPU), video/inference (GPU), fine-tuning jobs (spot GPU).</div></div>
+  <div class="node last-row"><div class="node-title">Multi-Region</div><div class="node-tech">Active-Active, 3+ regions</div><div class="node-desc">Models replicated to serving regions. Training runs in a dedicated ML region (GPU-rich).</div></div>
+  <div class="node last-row"><div class="node-title">Observability</div><div class="node-tech">Prometheus + Grafana + Jaeger</div><div class="node-desc">Model latency, accuracy drift, GPU utilization, and job queue depth all monitored as SLOs.</div></div>
+  <div class="node last-row"><div class="node-title">Multi-Tenancy</div><div class="node-tech">Org → Workspace → Channel</div><div class="node-desc">Model namespacing per org. Fine-tuned models private by default, shareable to workspace.</div></div>
+</div>
+
+<!-- ═══════════════════════════════ -->
+<!--  DESIGN PRINCIPLES              -->
+<!-- ═══════════════════════════════ -->
+<div class="section-title" style="margin-top:22px;"><span>KEY DESIGN PRINCIPLES — AI + FINE-TUNING</span></div>
+<div class="principles-body">
+  <div class="principle"><div class="principle-title">LoRA / Adapter Fine-tuning</div><div class="principle-desc">Users fine-tune only adapter layers, not full model weights. 100x cheaper, 10x faster. Base model shared across all users.</div></div>
+  <div class="principle"><div class="principle-title">Predictions as First-Class Fields</div><div class="principle-desc">Predicted values stored as channel fields in InfluxDB alongside real readings. Same API to query both.</div></div>
+  <div class="principle"><div class="principle-title">Sensor + Video Multimodal</div><div class="principle-desc">Fine-tuning UI lets users select sensor channels AND video clips as joint training inputs. Fusion model handles both.</div></div>
+  <div class="principle"><div class="principle-title">Drift Detection & Auto-Retrain</div><div class="principle-desc">Evidently monitors prediction accuracy in production. Triggers notification (or auto job) when data distribution shifts.</div></div>
+  <div class="principle"><div class="principle-title">Spot GPU for Training Jobs</div><div class="principle-desc">Fine-tuning jobs use spot/preemptible GPU instances. Checkpointing every epoch. 80% cost reduction vs on-demand.</div></div>
+  <div class="principle"><div class="principle-title">Model Marketplace</div><div class="principle-desc">Users can publish fine-tuned models to a shared marketplace. Others import and further specialize them for their channel.</div></div>
+</div>
+
+<p class="footer">THINGSPEAK ARCHITECTURE v3 · SENSOR + CAMERA + AI PREDICTION + FINE-TUNING · BILLION SCALE · 2026</p>
+</body>
+</html>
