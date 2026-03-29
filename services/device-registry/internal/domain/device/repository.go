@@ -21,4 +21,7 @@ type DeviceCacheRepository interface {
 	SetDevice(ctx context.Context, device *Device) error
 	GetDeviceByAPIKey(ctx context.Context, apiKey string) (*Device, error)
 	DeleteDevice(ctx context.Context, deviceID, apiKey string) error
+	// IncrDeviceVersion atomically increments the version counter for a device.
+	// Ingestion's cache checks this counter on every cache hit to detect stale entries.
+	IncrDeviceVersion(ctx context.Context, deviceID string) error
 }

@@ -116,6 +116,9 @@ func (s *DeviceService) RotateAPIKey(ctx context.Context, id string) (*device.De
 	if err := s.cache.SetDevice(ctx, d); err != nil {
 		s.logger.Error("failed to cache device", "device_id", d.ID, "error", err)
 	}
+	if err := s.cache.IncrDeviceVersion(ctx, d.ID.String()); err != nil {
+		s.logger.Error("failed to increment device version", "device_id", d.ID, "error", err)
+	}
 	return d, nil
 }
 
@@ -136,6 +139,9 @@ func (s *DeviceService) DeleteDevice(ctx context.Context, id string) error {
 	}
 	if err := s.cache.DeleteDevice(ctx, d.ID.String(), d.APIKey); err != nil {
 		s.logger.Error("failed to delete device from cache", "device_id", d.ID, "error", err)
+	}
+	if err := s.cache.IncrDeviceVersion(ctx, d.ID.String()); err != nil {
+		s.logger.Error("failed to increment device version", "device_id", d.ID, "error", err)
 	}
 	return nil
 }

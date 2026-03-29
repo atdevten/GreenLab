@@ -114,3 +114,14 @@ func (c *DeviceCache) DeleteDevice(ctx context.Context, deviceID, apiKey string)
 	}
 	return nil
 }
+
+// IncrDeviceVersion atomically increments the version counter at
+// "device_version:{deviceID}". Ingestion's cache compares this value
+// on every cache hit to detect stale cached entries.
+func (c *DeviceCache) IncrDeviceVersion(ctx context.Context, deviceID string) error {
+	key := fmt.Sprintf("device_version:%s", deviceID)
+	if err := c.client.Incr(ctx, key).Err(); err != nil {
+		return fmt.Errorf("DeviceCache.IncrDeviceVersion: %w", err)
+	}
+	return nil
+}

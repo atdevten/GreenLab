@@ -163,10 +163,27 @@ func TestRotateAPIKey(t *testing.T) {
 		repo.On("GetByID", ctx, id).Return(existing, nil)
 		repo.On("Update", ctx, mock.AnythingOfType("*device.Device")).Return(nil)
 		cache.On("SetDevice", ctx, mock.AnythingOfType("*device.Device")).Return(nil)
+		cache.On("IncrDeviceVersion", ctx, id.String()).Return(nil)
 
 		d, err := svc.RotateAPIKey(ctx, id.String())
 		require.NoError(t, err)
 		assert.NotEqual(t, "ts_old", d.APIKey)
+		repo.AssertExpectations(t)
+		cache.AssertExpectations(t)
+	})
+
+	t.Run("IncrDeviceVersion error is logged not returned", func(t *testing.T) {
+		svc, repo, cache := newTestDeviceService(t)
+		id := uuid.New()
+		existing := &device.Device{ID: id, Name: "My Device", APIKey: "ts_old"}
+		repo.On("GetByID", ctx, id).Return(existing, nil)
+		repo.On("Update", ctx, mock.AnythingOfType("*device.Device")).Return(nil)
+		cache.On("SetDevice", ctx, mock.AnythingOfType("*device.Device")).Return(nil)
+		cache.On("IncrDeviceVersion", ctx, id.String()).Return(errors.New("redis: timeout"))
+
+		d, err := svc.RotateAPIKey(ctx, id.String())
+		require.NoError(t, err) // error must not surface
+		assert.NotNil(t, d)
 		repo.AssertExpectations(t)
 		cache.AssertExpectations(t)
 	})
@@ -183,6 +200,7 @@ func TestDeleteDevice(t *testing.T) {
 		repo.On("GetByID", ctx, id).Return(existing, nil)
 		deleteCall := repo.On("Delete", ctx, id).Return(nil)
 		cache.On("DeleteDevice", ctx, id.String(), apiKey).Return(nil).NotBefore(deleteCall)
+		cache.On("IncrDeviceVersion", ctx, id.String()).Return(nil)
 
 		err := svc.DeleteDevice(ctx, id.String())
 		require.NoError(t, err)
