@@ -8,6 +8,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestSoftDelete(t *testing.T) {
+	wsID := uuid.New()
+
+	t.Run("sets deleted_at and updates updated_at", func(t *testing.T) {
+		ch, err := NewChannel(wsID, "Chan", "", ChannelVisibilityPrivate)
+		require.NoError(t, err)
+		assert.Nil(t, ch.DeletedAt)
+
+		err = ch.SoftDelete()
+		require.NoError(t, err)
+		assert.NotNil(t, ch.DeletedAt)
+		assert.Equal(t, ch.UpdatedAt, *ch.DeletedAt)
+	})
+
+	t.Run("double soft-delete returns not found", func(t *testing.T) {
+		ch, err := NewChannel(wsID, "Chan", "", ChannelVisibilityPrivate)
+		require.NoError(t, err)
+		require.NoError(t, ch.SoftDelete())
+
+		err = ch.SoftDelete()
+		assert.ErrorIs(t, err, ErrChannelNotFound)
+	})
+}
+
 func TestNewChannel(t *testing.T) {
 	wsID := uuid.New()
 
