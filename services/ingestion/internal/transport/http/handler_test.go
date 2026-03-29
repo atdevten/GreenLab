@@ -295,3 +295,19 @@ func TestHandler_ErrorToHTTPResponse(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }
+
+func TestBulkIngest_ExceedsMaxReturns400(t *testing.T) {
+	svc := &mockIngestService{}
+	h := newTestHandler(svc)
+	r := buildRouter(h, testSchema)
+
+	readings := make([]map[string]any, maxBulkSize+1)
+	for i := range readings {
+		readings[i] = map[string]any{"fields": map[string]float64{"temperature": float64(i)}}
+	}
+	body, _ := json.Marshal(map[string]any{"readings": readings})
+	w := doRequest(r, "POST", "/v1/channels/"+testSchema.ChannelID+"/data/bulk", body, "application/json")
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	svc.AssertNotCalled(t, "IngestBatch")
+}

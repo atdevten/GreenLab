@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -22,9 +23,10 @@ const (
 	ctProtobuf  = "application/x-protobuf"
 	ctBinary    = "application/x-thingspeak-binary"
 	ctOJSON     = "application/x-greenlab-ojson"
-	maxBodyJSON = 1 << 20  // 1 MB
-	maxBodyMsgP = 1 << 20  // 1 MB
-	maxBodyBin  = 32       // 32 bytes
+	maxBodyJSON = 1 << 20 // 1 MB
+	maxBodyMsgP = 1 << 20 // 1 MB
+	maxBodyBin  = 32      // 32 bytes
+	maxBulkSize = 100     // max readings per bulk request
 )
 
 // ingestService is the local interface the handler depends on.
@@ -172,6 +174,10 @@ func (h *Handler) BulkIngest(c *gin.Context) {
 	}
 	if err := validator.Validate(&req); err != nil {
 		response.ValidationError(c, err)
+		return
+	}
+	if len(req.Readings) > maxBulkSize {
+		response.Error(c, apierr.BadRequest(fmt.Sprintf("too many readings: max %d per request", maxBulkSize)))
 		return
 	}
 
