@@ -4,6 +4,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,11 +16,46 @@ import (
 	"github.com/greenlab/shared/pkg/response"
 )
 
+// allowedOrigins returns the set of permitted WebSocket origins.
+// ALLOWED_ORIGINS is a comma-separated list of origins, e.g.
+// "https://app.example.com,https://dash.example.com".
+// When empty the service falls back to the FRONTEND_URL env var.
+// An explicit wildcard "*" re-enables allow-all (dev only).
+func allowedOrigins() map[string]struct{} {
+	raw := os.Getenv("ALLOWED_ORIGINS")
+	if raw == "" {
+		raw = os.Getenv("FRONTEND_URL")
+	}
+	set := make(map[string]struct{})
+	for _, o := range strings.Split(raw, ",") {
+		o = strings.TrimSpace(o)
+		if o != "" {
+			set[o] = struct{}{}
+		}
+	}
+	return set
+}
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 4096,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // TODO: restrict in production
+		origin := r.Header.Get("Origin")
+		// Same-origin requests (e.g. server-side clients) have no Origin header.
+		if origin == "" {
+			return true
+		}
+		origins := allowedOrigins()
+		// Wildcard allows all origins — acceptable in local dev when set explicitly.
+		if _, ok := origins["*"]; ok {
+			return true
+		}
+		// If no origins are configured, reject cross-origin connections by default.
+		if len(origins) == 0 {
+			return false
+		}
+		_, ok := origins[origin]
+		return ok
 	},
 }
 
