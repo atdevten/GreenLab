@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { Btn } from './Button'
 import { Dot } from './Badge'
 
@@ -476,9 +476,19 @@ function Step2({
 
 // ── Step 3: API Key ────────────────────────────────────────────────────────
 
+type SnippetFormat = 'json' | 'ojson' | 'msgpack' | 'binary'
+
+const FORMAT_TABS: { id: SnippetFormat; label: string }[] = [
+  { id: 'json',    label: 'JSON'    },
+  { id: 'ojson',   label: 'OJson'   },
+  { id: 'msgpack', label: 'MsgPack' },
+  { id: 'binary',  label: 'Binary'  },
+]
+
 function Step3({ device }: { device: NewDevice }) {
   const [copiedKey,  setCopiedKey]  = useState(false)
   const [copiedSnip, setCopiedSnip] = useState(false)
+  const [format, setFormat] = useState<SnippetFormat>('json')
 
   const exampleValue = (f: Field) => {
     if (f.type === 'boolean') return 'true'
@@ -502,16 +512,34 @@ function Step3({ device }: { device: NewDevice }) {
     return '0.0'
   }
 
+  const exampleValueNum = (f: Field): number => parseFloat(exampleValue(f)) || 0
+
   const fieldLines = device.fields
     .map(f => `      "${f.key || f.name}": ${exampleValue(f)}`)
     .join(',\n')
 
   const baseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:9080'
+  const url = `${baseUrl}/v1/channels/${device.channelId}/data`
 
-  const nowIso = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
+  const { nowIso, nowMs } = useMemo(() => {
+    const now = new Date()
+    return {
+      nowIso: now.toISOString().replace(/\.\d{3}Z$/, 'Z'),
+      nowMs:  now.getTime(),
+    }
+  }, [])
 
-  const snippet =
-`curl -X POST ${baseUrl}/v1/channels/${device.channelId}/data \\
+  const fieldTimestampLines = device.fields
+    .map((f, i) => {
+      const ts = new Date(nowMs - i * 5000).toISOString().replace(/\.\d{3}Z$/, 'Z')
+      return `      "${f.key || f.name}": "${ts}"`
+    })
+    .join(',\n')
+
+  const snippets: Record<SnippetFormat, string> = {
+    json:
+`# Single timestamp for all fields
+curl -X POST ${url} \\
   -H "X-API-Key: ${device.apiKey}" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -519,7 +547,89 @@ function Step3({ device }: { device: NewDevice }) {
 ${fieldLines}
     },
     "timestamp": "${nowIso}"
-  }'`
+  }'
+
+# Per-field timestamps (each sensor captured at a different time)
+curl -X POST ${url} \\
+  -H "X-API-Key: ${device.apiKey}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "fields": {
+${fieldLines}
+    },
+    "field_timestamps": {
+${fieldTimestampLines}
+    }
+  }'`,
+
+    ojson:
+`# Compact ordered JSON — fields are positional (f[0] = field 1, f[1] = field 2, ...)
+# t = base timestamp (unix ms), td = per-field offset in seconds from t
+
+# Single timestamp for all fields
+curl -X POST ${url} \\
+  -H "X-API-Key: ${device.apiKey}" \\
+  -H "Content-Type: application/x-greenlab-ojson" \\
+  -d '{"f":[${device.fields.map(f => exampleValue(f)).join(',')}],"t":${nowMs},"sv":1}'
+
+# Per-field timestamps via td offsets (td[i] = seconds after t for field i)
+curl -X POST ${url} \\
+  -H "X-API-Key: ${device.apiKey}" \\
+  -H "Content-Type: application/x-greenlab-ojson" \\
+  -d '{"f":[${device.fields.map(f => exampleValue(f)).join(',')}],"t":${nowMs},"td":[${device.fields.map((_, i) => i * 5).join(',')}],"sv":1}'`,
+
+    msgpack:
+`# MsgPack — same structure as OJson, encoded as binary (use a library)
+# Python example:
+import msgpack, requests
+
+# Single timestamp for all fields
+payload = msgpack.packb({
+    "f": [${device.fields.map(f => exampleValueNum(f)).join(', ')}],
+    "t": ${nowMs},
+    "sv": 1,
+})
+
+# Per-field timestamps via td offsets (td[i] = seconds after t for field i)
+payload = msgpack.packb({
+    "f": [${device.fields.map(f => exampleValueNum(f)).join(', ')}],
+    "t": ${nowMs},
+    "td": [${device.fields.map((_, i) => i * 5).join(', ')}],
+    "sv": 1,
+})
+
+requests.post(
+    "${url}",
+    data=payload,
+    headers={
+        "X-API-Key": "${device.apiKey}",
+        "Content-Type": "application/msgpack",
+    },
+)`,
+
+    binary:
+`# Binary frame — ultra-compact for microcontrollers (12 + N×2 bytes)
+# Frame layout: VER(1) | DEVID(4) | TS(4) | FIELDMSK(1) | VALUES(N×2) | CRC16(2)
+#
+# VER       = 0x01
+# DEVID     = first 4 bytes of your device UUID
+# TS        = unix timestamp (uint32 big-endian)
+# FIELDMSK  = bitmask of fields present (bit 0 = field 1, bit 1 = field 2, ...)
+# VALUES    = uint16 per field, big-endian
+# CRC16     = CRC16/CCITT-FALSE over all preceding bytes
+#
+# Device ID: ${device.id}
+# Fields:    ${device.fields.map((f, i) => `bit ${i} → ${f.key || f.name}`).join(', ')}
+#
+# Use the GreenLab embedded SDK or implement the frame encoder in your firmware.`,
+  }
+
+  const tips: Record<SnippetFormat, string> = {
+    json:    'Use timestamp for a single shared time across all fields. Use field_timestamps to assign a different capture time per field — omit both and the server uses receive time.',
+    ojson:   'Up to ~70% smaller than JSON. Use td (time-delta array) for per-field timestamps — each value is seconds after t. Fields must match the order defined in your channel schema.',
+    msgpack: 'MsgPack encodes the same OJson structure as binary — great for Python, Node.js, or Go clients. Supports td for per-field timestamps, same as OJson. Typically 40–60% smaller than JSON.',
+    binary:  'Smallest possible payload (as low as 14 bytes for 1 field). Designed for constrained microcontrollers (Arduino, ESP32, STM32). Requires firmware-side CRC16 computation.',
+  }
 
   const responsePreview =
 `{
@@ -592,21 +702,46 @@ ${fieldLines}
         </span>
       </div>
 
-      {/* curl snippet */}
+      {/* Quick Start */}
       <div style={{
         fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-        letterSpacing: '.06em', color: 'var(--muted)', marginBottom: 8,
+        letterSpacing: '.06em', color: 'var(--muted)', marginBottom: 10,
       }}>
         Quick Start — Send a Reading
       </div>
+
+      {/* Format tabs */}
+      <div style={{
+        display: 'flex', gap: 4, marginBottom: 8,
+        background: 'var(--surface2)', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius)', padding: 4,
+      }}>
+        {FORMAT_TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => { setFormat(tab.id); setCopiedSnip(false) }}
+            style={{
+              flex: 1, padding: '5px 0', fontSize: 11, fontWeight: 600,
+              border: 'none', borderRadius: 'calc(var(--radius) - 2px)',
+              cursor: 'pointer', transition: 'background .15s, color .15s',
+              background: format === tab.id ? 'var(--accent)' : 'transparent',
+              color: format === tab.id ? '#fff' : 'var(--muted)',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Snippet */}
       <pre style={{
         background: 'var(--bg)', border: '1px solid var(--border)',
         borderRadius: 'var(--radius)', padding: '14px 16px',
         fontFamily: 'monospace', fontSize: 11, color: 'var(--cyan)',
         whiteSpace: 'pre', overflowX: 'auto', marginBottom: 8, lineHeight: 1.7,
-      }}>{snippet}</pre>
-      <Btn variant="ghost" size="sm" onClick={() => copy(snippet, setCopiedSnip)}>
-        {copiedSnip ? '✓ Copied!' : '⎘ Copy curl snippet'}
+      }}>{snippets[format]}</pre>
+      <Btn variant="ghost" size="sm" onClick={() => copy(snippets[format], setCopiedSnip)}>
+        {copiedSnip ? '✓ Copied!' : '⎘ Copy snippet'}
       </Btn>
 
       {/* Response preview */}
@@ -631,10 +766,7 @@ ${fieldLines}
         fontSize: 12, color: 'var(--accent-lt)', marginBottom: 24,
       }}>
         <span style={{ flexShrink: 0 }}>💡</span>
-        <span>
-          <strong>timestamp</strong> is optional — omit it and the server uses receive time.
-          For bandwidth-constrained devices, use <strong>OJson</strong> (<code>Content-Type: application/x-greenlab-ojson</code>) or <strong>MsgPack</strong> to send up to 70% smaller payloads.
-        </span>
+        <span>{tips[format]}</span>
       </div>
 
       {/* Summary */}
