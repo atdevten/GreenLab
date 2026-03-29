@@ -34,6 +34,8 @@ func mapDeviceError(err error) error {
 	switch {
 	case errors.Is(err, device.ErrDeviceNotFound):
 		return apierr.NotFound("device")
+	case errors.Is(err, device.ErrDeviceAlreadyDeleted):
+		return apierr.NotFound("device")
 	case errors.Is(err, device.ErrInvalidName), errors.Is(err, device.ErrInvalidStatus):
 		return apierr.BadRequest(err.Error())
 	default:

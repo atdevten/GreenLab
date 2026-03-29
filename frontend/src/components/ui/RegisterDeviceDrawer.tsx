@@ -8,6 +8,8 @@ export interface Field {
   name: string
   unit: string
   type: 'float' | 'integer' | 'string' | 'boolean'
+  key: string
+  keyLocked?: boolean
 }
 
 export interface NewDevice {
@@ -18,15 +20,22 @@ export interface NewDevice {
   description: string
   tags: string
   channelName: string
+  channelId: string
   visibility: 'private' | 'public'
   fields: Field[]
   apiKey: string
 }
 
+interface WorkspaceOption {
+  id: string
+  name: string
+}
+
 interface Props {
   open: boolean
   onClose: () => void
-  onRegister: (device: NewDevice) => void
+  onRegister: (device: NewDevice) => Promise<{ channelId: string; apiKey: string }>
+  workspaces?: WorkspaceOption[]
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -35,56 +44,51 @@ const DEVICE_TYPES = [
   {
     icon: '🌡️', name: 'Environmental', desc: 'Temp, humidity, CO₂, light',
     defaultFields: [
-      { name: 'Temperature', unit: '°C',  type: 'float' as const },
-      { name: 'Humidity',    unit: '%',   type: 'float' as const },
-      { name: 'CO₂',        unit: 'ppm', type: 'float' as const },
+      { name: 'Temperature', unit: '°C',  type: 'float' as const, key: 'temperature' },
+      { name: 'Humidity',    unit: '%',   type: 'float' as const, key: 'humidity' },
+      { name: 'CO₂',        unit: 'ppm', type: 'float' as const, key: 'co2' },
     ],
   },
   {
     icon: '💧', name: 'Water Quality', desc: 'pH, turbidity, dissolved O₂',
     defaultFields: [
-      { name: 'pH',           unit: '',      type: 'float' as const },
-      { name: 'Turbidity',    unit: 'NTU',   type: 'float' as const },
-      { name: 'Dissolved O₂', unit: 'mg/L',  type: 'float' as const },
+      { name: 'pH',           unit: '',      type: 'float' as const, key: 'ph' },
+      { name: 'Turbidity',    unit: 'NTU',   type: 'float' as const, key: 'turbidity' },
+      { name: 'Dissolved O₂', unit: 'mg/L',  type: 'float' as const, key: 'dissolved_o2' },
     ],
   },
   {
     icon: '💨', name: 'Air Quality', desc: 'PM2.5, PM10, VOC, AQI',
     defaultFields: [
-      { name: 'PM2.5', unit: 'μg/m³', type: 'float'   as const },
-      { name: 'PM10',  unit: 'μg/m³', type: 'float'   as const },
-      { name: 'AQI',   unit: '',      type: 'integer' as const },
+      { name: 'PM2.5', unit: 'μg/m³', type: 'float'   as const, key: 'pm2_5' },
+      { name: 'PM10',  unit: 'μg/m³', type: 'float'   as const, key: 'pm10' },
+      { name: 'AQI',   unit: '',      type: 'integer' as const, key: 'aqi' },
     ],
   },
   {
     icon: '⚡', name: 'Energy', desc: 'Power, voltage, current',
     defaultFields: [
-      { name: 'Voltage', unit: 'V', type: 'float' as const },
-      { name: 'Current', unit: 'A', type: 'float' as const },
-      { name: 'Power',   unit: 'W', type: 'float' as const },
+      { name: 'Voltage', unit: 'V', type: 'float' as const, key: 'voltage' },
+      { name: 'Current', unit: 'A', type: 'float' as const, key: 'current' },
+      { name: 'Power',   unit: 'W', type: 'float' as const, key: 'power' },
     ],
   },
   {
     icon: '🌾', name: 'Soil / Agriculture', desc: 'Moisture, NPK, pH',
     defaultFields: [
-      { name: 'Moisture',  unit: '%',    type: 'float' as const },
-      { name: 'pH',        unit: '',     type: 'float' as const },
-      { name: 'Nitrogen',  unit: 'mg/L', type: 'float' as const },
+      { name: 'Moisture',  unit: '%',    type: 'float' as const, key: 'moisture' },
+      { name: 'pH',        unit: '',     type: 'float' as const, key: 'ph' },
+      { name: 'Nitrogen',  unit: 'mg/L', type: 'float' as const, key: 'nitrogen' },
     ],
   },
   {
     icon: '📦', name: 'Custom', desc: 'Define your own fields',
     defaultFields: [
-      { name: 'field1', unit: '', type: 'float' as const },
+      { name: 'field1', unit: '', type: 'float' as const, key: 'field1' },
     ],
   },
 ]
 
-const WORKSPACES = [
-  'GreenLab — Default Workspace',
-  'GreenLab — Farm Project',
-  'GreenLab — R&D Lab',
-]
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -95,6 +99,24 @@ function genId() {
 function genApiKey() {
   const chars = '0123456789abcdef'
   return 'ts_' + Array.from({ length: 64 }, () => chars[Math.floor(Math.random() * 16)]).join('')
+}
+
+// Normalise a human label into a safe slug used as the JSON key
+const SCRIPT_MAP: Record<string, string> = {
+  '₀':'0','₁':'1','₂':'2','₃':'3','₄':'4','₅':'5','₆':'6','₇':'7','₈':'8','₉':'9',
+  '⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9',
+  'μ':'u','µ':'u','°':'','Ω':'ohm','±':'',
+}
+
+export function toFieldKey(label: string): string {
+  return label
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[₀₁₂₃₄₅₆₇₈₉⁰¹²³⁴⁵⁶⁷⁸⁹μµ°Ω±]/g, c => SCRIPT_MAP[c] ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 32) || 'field'
 }
 
 // ── Shared styles ──────────────────────────────────────────────────────────
@@ -162,11 +184,12 @@ function Stepper({ step }: { step: number }) {
 
 function Step1({
   name, setName, typeIdx, setTypeIdx,
-  workspace, setWorkspace, description, setDescription, tags, setTags,
+  workspace, setWorkspace, workspaceOptions, description, setDescription, tags, setTags,
 }: {
   name: string; setName(v: string): void
   typeIdx: number; setTypeIdx(i: number): void
   workspace: string; setWorkspace(v: string): void
+  workspaceOptions: WorkspaceOption[]
   description: string; setDescription(v: string): void
   tags: string; setTags(v: string): void
 }) {
@@ -220,7 +243,7 @@ function Step1({
           </span>
         </label>
         <select value={workspace} onChange={e => setWorkspace(e.target.value)} style={{ ...inp, appearance: 'none' }}>
-          {WORKSPACES.map(w => <option key={w}>{w}</option>)}
+          {workspaceOptions.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
         </select>
       </div>
 
@@ -253,13 +276,23 @@ function Step2({
   visibility: 'private' | 'public'; setVisibility(v: 'private' | 'public'): void
   fields: Field[]; setFields(f: Field[]): void
 }) {
-  function updateField(i: number, key: keyof Field, value: string) {
-    setFields(fields.map((f, idx) => idx === i ? { ...f, [key]: value } : f))
+  function updateField(i: number, field: keyof Field, value: string) {
+    setFields(fields.map((f, idx) => {
+      if (idx !== i) return f
+      const updated: Field = { ...f, [field]: value }
+      if (field === 'name' && !f.keyLocked) {
+        updated.key = toFieldKey(value)
+      }
+      if (field === 'key') {
+        updated.keyLocked = value.length > 0
+      }
+      return updated
+    }))
   }
 
   function addField() {
     if (fields.length >= 8) return
-    setFields([...fields, { name: '', unit: '', type: 'float' }])
+    setFields([...fields, { name: '', unit: '', type: 'float', key: '' }])
   }
 
   function removeField(i: number) {
@@ -333,51 +366,91 @@ function Step2({
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {fields.map((f, i) => (
-            <div key={i} style={{
-              display: 'grid', gridTemplateColumns: '28px 1fr 72px 100px 32px',
-              alignItems: 'center', gap: 6,
-              background: 'var(--surface2)', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)', padding: '6px 10px',
-            }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-lt)', textAlign: 'center' }}>F{i + 1}</span>
-              <input
-                value={f.name}
-                onChange={e => updateField(i, 'name', e.target.value)}
-                placeholder="Field name"
-                style={{ ...inp, padding: '5px 8px', fontSize: 12 }}
-              />
-              <input
-                value={f.unit}
-                onChange={e => updateField(i, 'unit', e.target.value)}
-                placeholder="Unit"
-                style={{ ...inp, padding: '5px 8px', fontSize: 12 }}
-              />
-              <select
-                value={f.type}
-                onChange={e => updateField(i, 'type', e.target.value)}
-                style={{ ...inp, padding: '5px 6px', fontSize: 12, appearance: 'none' }}
-              >
-                <option value="float">float</option>
-                <option value="integer">integer</option>
-                <option value="string">string</option>
-                <option value="boolean">boolean</option>
-              </select>
-              <button
-                onClick={() => removeField(i)}
-                disabled={fields.length <= 1}
-                style={{
-                  width: 28, height: 28, borderRadius: 'var(--radius)',
-                  display: 'grid', placeItems: 'center', fontSize: 13,
-                  color: 'var(--muted)', background: 'transparent',
-                  border: '1px solid var(--border)',
-                  cursor: fields.length <= 1 ? 'default' : 'pointer',
-                  opacity: fields.length <= 1 ? .3 : 1,
-                  transition: 'all 180ms ease',
-                }}
-              >✕</button>
-            </div>
-          ))}
+          {(() => {
+            const keyCounts = fields.reduce<Record<string, number>>((acc, f) => {
+              if (f.key) acc[f.key] = (acc[f.key] ?? 0) + 1
+              return acc
+            }, {})
+            const dupKeys = new Set(Object.entries(keyCounts).filter(([, n]) => n > 1).map(([k]) => k))
+
+            return fields.map((f, i) => {
+              const isDup = f.key ? dupKeys.has(f.key) : false
+              return (
+                <div key={i} style={{
+                  background: 'var(--surface2)',
+                  border: `1px solid ${isDup ? 'var(--red)' : 'var(--border)'}`,
+                  borderRadius: 'var(--radius)', padding: '6px 10px',
+                  transition: 'border-color 180ms ease',
+                }}>
+                  {/* Top row */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 72px 100px 32px', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-lt)', textAlign: 'center' }}>F{i + 1}</span>
+                    <input
+                      value={f.name}
+                      onChange={e => updateField(i, 'name', e.target.value)}
+                      placeholder="Field name"
+                      style={{ ...inp, padding: '5px 8px', fontSize: 12 }}
+                    />
+                    <input
+                      value={f.unit}
+                      onChange={e => updateField(i, 'unit', e.target.value)}
+                      placeholder="Unit"
+                      style={{ ...inp, padding: '5px 8px', fontSize: 12 }}
+                    />
+                    <select
+                      value={f.type}
+                      onChange={e => updateField(i, 'type', e.target.value)}
+                      style={{ ...inp, padding: '5px 6px', fontSize: 12, appearance: 'none' }}
+                    >
+                      <option value="float">float</option>
+                      <option value="integer">integer</option>
+                      <option value="string">string</option>
+                      <option value="boolean">boolean</option>
+                    </select>
+                    <button
+                      onClick={() => removeField(i)}
+                      disabled={fields.length <= 1}
+                      style={{
+                        width: 28, height: 28, borderRadius: 'var(--radius)',
+                        display: 'grid', placeItems: 'center', fontSize: 13,
+                        color: 'var(--muted)', background: 'transparent',
+                        border: '1px solid var(--border)',
+                        cursor: fields.length <= 1 ? 'default' : 'pointer',
+                        opacity: fields.length <= 1 ? .3 : 1,
+                        transition: 'all 180ms ease',
+                      }}
+                    >✕</button>
+                  </div>
+
+                  {/* Key row */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, paddingLeft: 34 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', flexShrink: 0 }}>key</span>
+                    <input
+                      value={f.key}
+                      onChange={e => updateField(i, 'key', e.target.value)}
+                      placeholder="auto"
+                      style={{
+                        ...inp, padding: '3px 7px', fontSize: 11,
+                        fontFamily: 'monospace', color: isDup ? 'var(--red)' : 'var(--cyan)',
+                        flex: 1,
+                      }}
+                    />
+                    {f.keyLocked && (
+                      <span
+                        title="Key manually set — won't auto-update from label"
+                        style={{ fontSize: 12, cursor: 'default', flexShrink: 0 }}
+                      >🔒</span>
+                    )}
+                  </div>
+                  {isDup && (
+                    <div style={{ fontSize: 10, color: 'var(--red)', marginTop: 3, paddingLeft: 34, fontWeight: 600 }}>
+                      Duplicate key — must be unique
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          })()}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
@@ -407,19 +480,55 @@ function Step3({ device }: { device: NewDevice }) {
   const [copiedKey,  setCopiedKey]  = useState(false)
   const [copiedSnip, setCopiedSnip] = useState(false)
 
+  const exampleValue = (f: Field) => {
+    if (f.type === 'boolean') return 'true'
+    if (f.type === 'string')  return '"normal"'
+    if (f.type === 'integer') return '42'
+    // Float: pick a realistic seed based on common field names
+    const k = (f.key || f.name).toLowerCase()
+    if (k.includes('temp'))    return '23.5'
+    if (k.includes('humid'))   return '61.2'
+    if (k.includes('ph'))      return '7.2'
+    if (k.includes('co2'))     return '412.0'
+    if (k.includes('pm'))      return '18.4'
+    if (k.includes('aqi'))     return '52.0'
+    if (k.includes('volt'))    return '12.1'
+    if (k.includes('curr'))    return '1.35'
+    if (k.includes('power'))   return '16.3'
+    if (k.includes('moisture') || k.includes('soil')) return '42.8'
+    if (k.includes('o2') || k.includes('oxygen'))     return '8.2'
+    if (k.includes('turb'))    return '1.4'
+    if (k.includes('nitro'))   return '24.0'
+    return '0.0'
+  }
+
   const fieldLines = device.fields
-    .map((f, i) => `      "field${i + 1}": <${f.type}>  // ${f.name}${f.unit ? ` (${f.unit})` : ''}`)
+    .map(f => `      "${f.key || f.name}": ${exampleValue(f)}`)
     .join(',\n')
 
+  const baseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:9080'
+
+  const nowIso = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
+
   const snippet =
-`curl -X POST https://api.greenlab.io/v1/ingest \\
-  -H "X-API-Key: ${device.apiKey.slice(0, 20)}..." \\
+`curl -X POST ${baseUrl}/v1/channels/${device.channelId}/data \\
+  -H "X-API-Key: ${device.apiKey}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "fields": {
 ${fieldLines}
-    }
+    },
+    "timestamp": "${nowIso}"
   }'`
+
+  const responsePreview =
+`{
+  "success": true,
+  "data": {
+    "accepted": 1,
+    "written_at": "..."
+  }
+}`
 
   function copy(text: string, set: (v: boolean) => void) {
     navigator.clipboard.writeText(text).catch(() => {})
@@ -496,9 +605,37 @@ ${fieldLines}
         fontFamily: 'monospace', fontSize: 11, color: 'var(--cyan)',
         whiteSpace: 'pre', overflowX: 'auto', marginBottom: 8, lineHeight: 1.7,
       }}>{snippet}</pre>
-      <Btn variant="ghost" size="sm" style={{ marginBottom: 24 }} onClick={() => copy(snippet, setCopiedSnip)}>
+      <Btn variant="ghost" size="sm" onClick={() => copy(snippet, setCopiedSnip)}>
         {copiedSnip ? '✓ Copied!' : '⎘ Copy curl snippet'}
       </Btn>
+
+      {/* Response preview */}
+      <div style={{
+        fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+        letterSpacing: '.06em', color: 'var(--muted)', margin: '16px 0 8px',
+      }}>
+        Expected Response
+      </div>
+      <pre style={{
+        background: 'var(--bg)', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius)', padding: '14px 16px',
+        fontFamily: 'monospace', fontSize: 11, color: 'var(--green)',
+        whiteSpace: 'pre', overflowX: 'auto', marginBottom: 8, lineHeight: 1.7,
+      }}>{responsePreview}</pre>
+
+      {/* Tip */}
+      <div style={{
+        display: 'flex', gap: 8, alignItems: 'flex-start',
+        background: 'rgba(37,99,235,.08)', border: '1px solid rgba(37,99,235,.2)',
+        borderRadius: 'var(--radius)', padding: '10px 14px',
+        fontSize: 12, color: 'var(--accent-lt)', marginBottom: 24,
+      }}>
+        <span style={{ flexShrink: 0 }}>💡</span>
+        <span>
+          <strong>timestamp</strong> is optional — omit it and the server uses receive time.
+          For bandwidth-constrained devices, use <strong>OJson</strong> (<code>Content-Type: application/x-greenlab-ojson</code>) or <strong>MsgPack</strong> to send up to 70% smaller payloads.
+        </span>
+      </div>
 
       {/* Summary */}
       <div style={{
@@ -547,13 +684,13 @@ ${fieldLines}
 
 // ── Main Drawer ────────────────────────────────────────────────────────────
 
-export function RegisterDeviceDrawer({ open, onClose, onRegister }: Props) {
+export function RegisterDeviceDrawer({ open, onClose, onRegister, workspaces: workspaceProp = [] }: Props) {
   const [step, setStep] = useState(1)
 
   // Step 1 state
   const [name,        setName]        = useState('')
   const [typeIdx,     setTypeIdx]     = useState(0)
-  const [workspace,   setWorkspace]   = useState(WORKSPACES[0])
+  const [workspace,   setWorkspace]   = useState(workspaceProp[0]?.id ?? '')
   const [description, setDescription] = useState('')
   const [tags,        setTags]        = useState('')
 
@@ -561,6 +698,7 @@ export function RegisterDeviceDrawer({ open, onClose, onRegister }: Props) {
   const [channelName, setChannelName] = useState('')
   const [visibility,  setVisibility]  = useState<'private' | 'public'>('private')
   const [fields,      setFields]      = useState<Field[]>(DEVICE_TYPES[0].defaultFields)
+  const [submitting,  setSubmitting]  = useState(false)
 
   // Step 3 — stored in a ref so it's immediately available on render
   const deviceRef = useRef<NewDevice | null>(null)
@@ -573,7 +711,7 @@ export function RegisterDeviceDrawer({ open, onClose, onRegister }: Props) {
   const step1Valid = name.trim().length > 0
   const step2Valid = channelName.trim().length > 0
 
-  function advance() {
+  async function advance() {
     if (step === 1) {
       if (!step1Valid) return
       // Seed channel name from device name + type when entering step 2
@@ -594,12 +732,18 @@ export function RegisterDeviceDrawer({ open, onClose, onRegister }: Props) {
         description,
         tags,
         channelName: channelName.trim(),
+        channelId:   '',
         visibility,
         fields,
         apiKey:      genApiKey(),
       }
-      deviceRef.current = device
-      onRegister(device)
+      setSubmitting(true)
+      try {
+        const result = await onRegister(device)
+        deviceRef.current = { ...device, channelId: result.channelId, apiKey: result.apiKey }
+      } finally {
+        setSubmitting(false)
+      }
       setStep(3)
       return
     }
@@ -614,15 +758,16 @@ export function RegisterDeviceDrawer({ open, onClose, onRegister }: Props) {
     onClose()
     setTimeout(() => {
       setStep(1); setName(''); setTypeIdx(0)
-      setWorkspace(WORKSPACES[0]); setDescription(''); setTags('')
+      setWorkspace(workspaceProp[0]?.id ?? ''); setDescription(''); setTags('')
       setChannelName(''); setVisibility('private')
       setFields(DEVICE_TYPES[0].defaultFields)
+      setSubmitting(false)
       deviceRef.current = null
     }, 300)
   }
 
-  const nextLabel  = step === 2 ? 'Register Device →' : step === 3 ? '✓ Done' : 'Next →'
-  const nextValid  = step === 1 ? step1Valid : step === 2 ? step2Valid : true
+  const nextLabel  = step === 2 ? (submitting ? 'Registering…' : 'Register Device →') : step === 3 ? '✓ Done' : 'Next →'
+  const nextValid  = step === 1 ? step1Valid : step === 2 ? (step2Valid && !submitting) : true
 
   return (
     <>
@@ -670,6 +815,7 @@ export function RegisterDeviceDrawer({ open, onClose, onRegister }: Props) {
               name={name} setName={setName}
               typeIdx={typeIdx} setTypeIdx={handleTypeChange}
               workspace={workspace} setWorkspace={setWorkspace}
+              workspaceOptions={workspaceProp}
               description={description} setDescription={setDescription}
               tags={tags} setTags={setTags}
             />

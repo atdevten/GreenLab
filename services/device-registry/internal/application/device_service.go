@@ -128,6 +128,9 @@ func (s *DeviceService) DeleteDevice(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("DeleteDevice.GetByID: %w", err)
 	}
+	if err := d.SoftDelete(); err != nil {
+		return fmt.Errorf("DeleteDevice.SoftDelete: %w", err)
+	}
 	if err := s.repo.Delete(ctx, uid); err != nil {
 		return fmt.Errorf("DeleteDevice.repo.Delete: %w", err)
 	}

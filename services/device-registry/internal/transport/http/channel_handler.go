@@ -62,8 +62,11 @@ func (h *ChannelHandler) CreateChannel(c *gin.Context) {
 		return
 	}
 	ch, err := h.svc.CreateChannel(c.Request.Context(), application.CreateChannelInput{
-		WorkspaceID: req.WorkspaceID, Name: req.Name,
-		Description: req.Description, Visibility: req.Visibility,
+		WorkspaceID: req.WorkspaceID,
+		DeviceID:    req.DeviceID,
+		Name:        req.Name,
+		Description: req.Description,
+		Visibility:  req.Visibility,
 	})
 	if err != nil {
 		response.Error(c, mapChannelError(err))

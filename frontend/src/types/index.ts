@@ -26,7 +26,8 @@ export interface UpdateDeviceRequest { name?: string; description?: string; tags
 
 export interface Channel { id: string; device_id: string; name: string; visibility: 'public' | 'private'; tags?: string[]; fields: FieldDef[]; last_reading?: string; reads_24h: number; updated_at: string }
 export interface FieldDef { id?: string; key: string; name: string; unit?: string; type: 'float' | 'integer' | 'string' | 'boolean'; color?: string; enabled?: boolean }
-export interface CreateChannelRequest { device_id: string; name: string; visibility: 'public' | 'private'; tags?: string[]; fields: FieldDef[] }
+export interface CreateChannelRequest { workspace_id: string; device_id?: string; name: string; description?: string; visibility: 'public' | 'private' }
+export interface CreateFieldRequest { channel_id: string; name: string; label?: string; unit?: string; field_type: 'float' | 'integer' | 'string' | 'boolean'; position: number; description?: string }
 
 export interface Field { id: string; channel_id: string; key: string; name: string; unit?: string; type: 'float' | 'integer' | 'string' | 'boolean' }
 

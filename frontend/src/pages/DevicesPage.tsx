@@ -7,10 +7,12 @@ import { Line } from 'react-chartjs-2'
 import { Badge, Dot } from '../components/ui/Badge'
 import { Btn } from '../components/ui/Button'
 import { Card, CardTitle } from '../components/ui/Card'
-import { RegisterDeviceDrawer, type NewDevice, type Field } from '../components/ui/RegisterDeviceDrawer'
+import { RegisterDeviceDrawer, toFieldKey, type NewDevice, type Field } from '../components/ui/RegisterDeviceDrawer'
 import { useToast } from '../contexts/ToastContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { devicesApi } from '../api/devices'
+import { channelsApi } from '../api/channels'
+import { fieldsApi } from '../api/fields'
 import { workspacesApi } from '../api/workspaces'
 import type { Device as ApiDevice, Workspace } from '../types'
 
@@ -42,12 +44,12 @@ function fakeKey(seed: string) {
 }
 
 const initial: Device[] = [
-  { icon: '🌡️', name: 'Greenhouse Sensor A', id: 'dev_4f2a91c3', status: 'Active',   channels: 4, reads: '42K', last: '12s ago', apiKey: fakeKey('4f2a91c3'), description: 'Main climate sensor for Greenhouse A',         tags: 'agriculture, climate, zone-a', workspace: 'GreenLab — Default Workspace', channelName: 'Greenhouse Climate',  visibility: 'private', fields: [{ name: 'Temperature', unit: '°C', type: 'float' }, { name: 'Humidity', unit: '%', type: 'float' }, { name: 'CO₂', unit: 'ppm', type: 'float' }, { name: 'Light', unit: 'lux', type: 'float' }] },
-  { icon: '🌾', name: 'Farm Node B',          id: 'dev_7c3e22b1', status: 'Active',   channels: 3, reads: '38K', last: '8s ago',  apiKey: fakeKey('7c3e22b1'), description: 'Soil monitoring node for Farm Project',          tags: 'soil, farming',               workspace: 'GreenLab — Farm Project',         channelName: 'Farm Soil Data',      visibility: 'private', fields: [{ name: 'Moisture', unit: '%', type: 'float' }, { name: 'pH', unit: '', type: 'float' }, { name: 'Nitrogen', unit: 'mg/L', type: 'float' }] },
-  { icon: '💧', name: 'Water Quality Probe',  id: 'dev_2a9f10d4', status: 'Warning',  channels: 5, reads: '19K', last: '2m ago',  apiKey: fakeKey('2a9f10d4'), description: 'Water quality probe — irrigation pond',          tags: 'water, quality',              workspace: 'GreenLab — Default Workspace', channelName: 'Pond Water Quality',  visibility: 'public',  fields: [{ name: 'pH', unit: '', type: 'float' }, { name: 'Turbidity', unit: 'NTU', type: 'float' }, { name: 'Dissolved O₂', unit: 'mg/L', type: 'float' }] },
-  { icon: '🌬️', name: 'Air Monitor',          id: 'dev_8b5c44e2', status: 'Active',   channels: 6, reads: '27K', last: '5s ago',  apiKey: fakeKey('8b5c44e2'), description: 'Air quality monitor for ventilation control',    tags: 'air, indoor',                 workspace: 'GreenLab — Default Workspace', channelName: 'Indoor Air Quality',  visibility: 'private', fields: [{ name: 'PM2.5', unit: 'μg/m³', type: 'float' }, { name: 'PM10', unit: 'μg/m³', type: 'float' }, { name: 'AQI', unit: '', type: 'integer' }] },
-  { icon: '🔬', name: 'R&D Lab Node',         id: 'dev_1d7a88f5', status: 'Inactive', channels: 2, reads: '620', last: '3h ago',  apiKey: fakeKey('1d7a88f5'), description: 'Experimental node in R&D lab',                   tags: 'lab, experimental',           workspace: 'GreenLab — R&D Lab',          channelName: 'Lab Readings',        visibility: 'private', fields: [{ name: 'field1', unit: '', type: 'float' }, { name: 'field2', unit: '', type: 'float' }] },
-  { icon: '☀️', name: 'Solar Tracker',        id: 'dev_9e2b55a3', status: 'Blocked',  channels: 2, reads: '0',   last: 'Never',   apiKey: fakeKey('9e2b55a3'), description: 'Solar panel orientation tracker',                tags: 'solar, energy',               workspace: 'GreenLab — Default Workspace', channelName: 'Solar Orientation',   visibility: 'private', fields: [{ name: 'Azimuth', unit: '°', type: 'float' }, { name: 'Elevation', unit: '°', type: 'float' }] },
+  { icon: '🌡️', name: 'Greenhouse Sensor A', id: 'dev_4f2a91c3', status: 'Active',   channels: 4, reads: '42K', last: '12s ago', apiKey: fakeKey('4f2a91c3'), description: 'Main climate sensor for Greenhouse A',         tags: 'agriculture, climate, zone-a', workspace: 'GreenLab — Default Workspace', channelName: 'Greenhouse Climate',  visibility: 'private', fields: [{ name: 'Temperature', unit: '°C', type: 'float', key: 'temperature' }, { name: 'Humidity', unit: '%', type: 'float', key: 'humidity' }, { name: 'CO₂', unit: 'ppm', type: 'float', key: 'co2' }, { name: 'Light', unit: 'lux', type: 'float', key: 'light' }] },
+  { icon: '🌾', name: 'Farm Node B',          id: 'dev_7c3e22b1', status: 'Active',   channels: 3, reads: '38K', last: '8s ago',  apiKey: fakeKey('7c3e22b1'), description: 'Soil monitoring node for Farm Project',          tags: 'soil, farming',               workspace: 'GreenLab — Farm Project',         channelName: 'Farm Soil Data',      visibility: 'private', fields: [{ name: 'Moisture', unit: '%', type: 'float', key: 'moisture' }, { name: 'pH', unit: '', type: 'float', key: 'ph' }, { name: 'Nitrogen', unit: 'mg/L', type: 'float', key: 'nitrogen' }] },
+  { icon: '💧', name: 'Water Quality Probe',  id: 'dev_2a9f10d4', status: 'Warning',  channels: 5, reads: '19K', last: '2m ago',  apiKey: fakeKey('2a9f10d4'), description: 'Water quality probe — irrigation pond',          tags: 'water, quality',              workspace: 'GreenLab — Default Workspace', channelName: 'Pond Water Quality',  visibility: 'public',  fields: [{ name: 'pH', unit: '', type: 'float', key: 'ph' }, { name: 'Turbidity', unit: 'NTU', type: 'float', key: 'turbidity' }, { name: 'Dissolved O₂', unit: 'mg/L', type: 'float', key: 'dissolved_o2' }] },
+  { icon: '🌬️', name: 'Air Monitor',          id: 'dev_8b5c44e2', status: 'Active',   channels: 6, reads: '27K', last: '5s ago',  apiKey: fakeKey('8b5c44e2'), description: 'Air quality monitor for ventilation control',    tags: 'air, indoor',                 workspace: 'GreenLab — Default Workspace', channelName: 'Indoor Air Quality',  visibility: 'private', fields: [{ name: 'PM2.5', unit: 'μg/m³', type: 'float', key: 'pm2_5' }, { name: 'PM10', unit: 'μg/m³', type: 'float', key: 'pm10' }, { name: 'AQI', unit: '', type: 'integer', key: 'aqi' }] },
+  { icon: '🔬', name: 'R&D Lab Node',         id: 'dev_1d7a88f5', status: 'Inactive', channels: 2, reads: '620', last: '3h ago',  apiKey: fakeKey('1d7a88f5'), description: 'Experimental node in R&D lab',                   tags: 'lab, experimental',           workspace: 'GreenLab — R&D Lab',          channelName: 'Lab Readings',        visibility: 'private', fields: [{ name: 'field1', unit: '', type: 'float', key: 'field1' }, { name: 'field2', unit: '', type: 'float', key: 'field2' }] },
+  { icon: '☀️', name: 'Solar Tracker',        id: 'dev_9e2b55a3', status: 'Blocked',  channels: 2, reads: '0',   last: 'Never',   apiKey: fakeKey('9e2b55a3'), description: 'Solar panel orientation tracker',                tags: 'solar, energy',               workspace: 'GreenLab — Default Workspace', channelName: 'Solar Orientation',   visibility: 'private', fields: [{ name: 'Azimuth', unit: '°', type: 'float', key: 'azimuth' }, { name: 'Elevation', unit: '°', type: 'float', key: 'elevation' }] },
 ]
 
 const statusColor: Record<string, 'green' | 'yellow' | 'red' | 'muted'> = {
@@ -269,12 +271,22 @@ function EditStep2({ channelName, setChannelName, visibility, setVisibility, fie
   visibility: 'private' | 'public'; setVisibility(v: 'private' | 'public'): void
   fields: Field[]; setFields(f: Field[]): void
 }) {
-  function updateField(i: number, key: keyof Field, value: string) {
-    setFields(fields.map((f, idx) => idx === i ? { ...f, [key]: value } : f))
+  function updateField(i: number, field: keyof Field, value: string) {
+    setFields(fields.map((f, idx) => {
+      if (idx !== i) return f
+      const updated: Field = { ...f, [field]: value }
+      if (field === 'name' && !f.keyLocked) {
+        updated.key = toFieldKey(value)
+      }
+      if (field === 'key') {
+        updated.keyLocked = value.length > 0
+      }
+      return updated
+    }))
   }
   function addField() {
     if (fields.length >= 8) return
-    setFields([...fields, { name: '', unit: '', type: 'float' }])
+    setFields([...fields, { name: '', unit: '', type: 'float', key: '' }])
   }
   function removeField(i: number) {
     if (fields.length <= 1) return
@@ -313,17 +325,38 @@ function EditStep2({ channelName, setChannelName, visibility, setVisibility, fie
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {fields.map((f, i) => (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 72px 100px 32px', alignItems: 'center', gap: 6, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '6px 10px' }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-lt)', textAlign: 'center' }}>F{i + 1}</span>
-              <input value={f.name} onChange={e => updateField(i, 'name', e.target.value)} placeholder="Field name" style={{ ...inp, padding: '5px 8px', fontSize: 12 }} />
-              <input value={f.unit} onChange={e => updateField(i, 'unit', e.target.value)} placeholder="Unit" style={{ ...inp, padding: '5px 8px', fontSize: 12 }} />
-              <select value={f.type} onChange={e => updateField(i, 'type', e.target.value)} style={{ ...inp, padding: '5px 6px', fontSize: 12, appearance: 'none' }}>
-                <option value="float">float</option>
-                <option value="integer">integer</option>
-                <option value="string">string</option>
-                <option value="boolean">boolean</option>
-              </select>
-              <button onClick={() => removeField(i)} disabled={fields.length <= 1} style={{ width: 28, height: 28, borderRadius: 'var(--radius)', display: 'grid', placeItems: 'center', fontSize: 13, color: 'var(--muted)', background: 'transparent', border: '1px solid var(--border)', cursor: fields.length <= 1 ? 'default' : 'pointer', opacity: fields.length <= 1 ? .3 : 1, transition: 'all 180ms ease' }}>✕</button>
+            <div key={i} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '6px 10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 72px 100px 32px', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-lt)', textAlign: 'center' }}>F{i + 1}</span>
+                <input value={f.name} onChange={e => updateField(i, 'name', e.target.value)} placeholder="Field name" style={{ ...inp, padding: '5px 8px', fontSize: 12 }} />
+                <input value={f.unit} onChange={e => updateField(i, 'unit', e.target.value)} placeholder="Unit" style={{ ...inp, padding: '5px 8px', fontSize: 12 }} />
+                <select value={f.type} onChange={e => updateField(i, 'type', e.target.value)} style={{ ...inp, padding: '5px 6px', fontSize: 12, appearance: 'none' }}>
+                  <option value="float">float</option>
+                  <option value="integer">integer</option>
+                  <option value="string">string</option>
+                  <option value="boolean">boolean</option>
+                </select>
+                <button onClick={() => removeField(i)} disabled={fields.length <= 1} style={{ width: 28, height: 28, borderRadius: 'var(--radius)', display: 'grid', placeItems: 'center', fontSize: 13, color: 'var(--muted)', background: 'transparent', border: '1px solid var(--border)', cursor: fields.length <= 1 ? 'default' : 'pointer', opacity: fields.length <= 1 ? .3 : 1, transition: 'all 180ms ease' }}>✕</button>
+              </div>
+              {/* Key row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, paddingLeft: 34 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', flexShrink: 0 }}>key</span>
+                {f.keyLocked ? (
+                  <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--cyan)', flex: 1, padding: '3px 7px' }}>
+                    {f.key}
+                  </span>
+                ) : (
+                  <input
+                    value={f.key}
+                    onChange={e => updateField(i, 'key', e.target.value)}
+                    placeholder="auto"
+                    style={{ ...inp, padding: '3px 7px', fontSize: 11, fontFamily: 'monospace', color: 'var(--cyan)', flex: 1 }}
+                  />
+                )}
+                {f.keyLocked && (
+                  <span title="Key is fixed after creation" style={{ fontSize: 12, cursor: 'default', flexShrink: 0 }}>🔒</span>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -348,7 +381,30 @@ function EditDeviceDrawer({ device, onClose, onSave }: {
   const [workspace,   setWorkspace]   = useState(device?.workspace ?? WORKSPACES[0])
   const [channelName, setChannelName] = useState(device?.channelName ?? '')
   const [visibility,  setVisibility]  = useState<'private' | 'public'>(device?.visibility ?? 'private')
-  const [fields,      setFields]      = useState<Field[]>(device?.fields ?? [{ name: 'field1', unit: '', type: 'float' }])
+  const [fields,      setFields]      = useState<Field[]>(device?.fields?.length ? device.fields : [{ name: 'field1', unit: '', type: 'float', key: 'field1' }])
+
+  // Fetch channel + fields from API when the drawer opens
+  useEffect(() => {
+    if (!device) return
+    channelsApi.list({ device_id: device.id })
+      .then(async r => {
+        const ch = r.data[0]
+        if (!ch) return
+        setChannelName(ch.name)
+        setVisibility(ch.visibility)
+        const fieldsRes = await fieldsApi.list(ch.id)
+        if (fieldsRes.data.length > 0) {
+          setFields(fieldsRes.data.map(f => ({
+            name: (f as any).label || f.name,
+            key: f.name,
+            unit: f.unit ?? '',
+            type: f.field_type as Field['type'],
+            keyLocked: true,
+          })))
+        }
+      })
+      .catch(() => {}) // keep default state on error
+  }, [device?.id])
 
   if (!device) return null
 
@@ -371,7 +427,7 @@ function EditDeviceDrawer({ device, onClose, onSave }: {
       setWorkspace(device?.workspace ?? WORKSPACES[0])
       setChannelName(device?.channelName ?? '')
       setVisibility(device?.visibility ?? 'private')
-      setFields(device?.fields ?? [{ name: 'field1', unit: '', type: 'float' }])
+      setFields(device?.fields ?? [{ name: 'field1', unit: '', type: 'float', key: 'field1' }])
     }, 300)
   }
 
@@ -486,12 +542,14 @@ function DeviceCard({
   onEdit,
   onBlock,
   onRotate,
+  onDelete,
 }: {
   device: Device
   onViewData(d: Device): void
   onEdit(d: Device): void
   onBlock(d: Device): void
   onRotate(d: Device): void
+  onDelete(d: Device): void
 }) {
   const [copied, setCopied] = useState(false)
 
@@ -547,7 +605,7 @@ function DeviceCard({
         opacity: isBlocked ? .5 : 1,
       }}>
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {device.apiKey.slice(0, 14)}••••••••••••••••••••••••••••••
+          {device.apiKey ? device.apiKey.slice(0, 14) + '••••••••••••••••••••••••••••••' : '••••••••••••••••••••••••••••••••••••••••••'}
         </span>
 
         {/* Copy */}
@@ -590,6 +648,10 @@ function DeviceCard({
         <Btn variant="danger" size="sm" onClick={() => onBlock(device)}>
           {isBlocked ? 'Unblock' : 'Block'}
         </Btn>
+
+        <Btn variant="danger" size="sm" onClick={() => onDelete(device)}>
+          Delete
+        </Btn>
       </div>
     </div>
   )
@@ -607,7 +669,7 @@ function apiDeviceToLocal(d: ApiDevice): Device {
     channels: d.channel_count,
     reads,
     last,
-    apiKey: d.api_key,
+    apiKey: d.api_key ?? '',
     description: d.description ?? '',
     tags: Array.isArray(d.tags) ? d.tags.join(', ') : '',
     workspace: d.workspace_id,
@@ -630,6 +692,7 @@ export function DevicesPage() {
   const [editDevice,   setEditDevice]   = useState<Device | null>(null)
   const [blockTarget,  setBlockTarget]  = useState<Device | null>(null)
   const [rotateTarget, setRotateTarget] = useState<Device | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Device | null>(null)
   const [workspaces,   setWorkspaces]   = useState<Workspace[]>([])
   const [activeWsId,   setActiveWsId]   = useState<string>('')
   const [wsLoaded,     setWsLoaded]     = useState(false)
@@ -660,22 +723,47 @@ export function DevicesPage() {
       .finally(() => setLoading(false))
   }, [activeWsId])
 
-  function handleRegister(nd: NewDevice) {
-    devicesApi.create({ name: nd.name, workspace_id: nd.workspace || activeWsId, description: nd.description, tags: nd.tags ? nd.tags.split(',').map(t => t.trim()).filter(Boolean) : [], icon: nd.icon })
-      .then(r => {
-        setDevices(prev => [apiDeviceToLocal(r.data), ...prev])
-        toast(`Device "${nd.name}" registered`)
+  async function handleRegister(nd: NewDevice): Promise<{ channelId: string; apiKey: string }> {
+    try {
+      const devRes = await devicesApi.create({
+        name: nd.name,
+        workspace_id: nd.workspace || activeWsId,
+        description: nd.description,
+        tags: nd.tags ? nd.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+        icon: nd.icon,
       })
-      .catch(() => {
-        setDevices(prev => [{
-          icon: nd.icon, name: nd.name, id: nd.id,
-          status: 'Active', channels: 1, reads: '0', last: 'just now',
-          apiKey: nd.apiKey, description: nd.description, tags: nd.tags,
-          workspace: nd.workspace, channelName: nd.channelName,
-          visibility: nd.visibility, fields: nd.fields,
-        }, ...prev])
-        toast(`Device "${nd.name}" registered`)
+      const deviceId = devRes.data.id
+      const apiKey = devRes.data.api_key ?? nd.apiKey
+
+      const chRes = await channelsApi.create({
+        workspace_id: nd.workspace || activeWsId,
+        device_id: deviceId,
+        name: nd.channelName,
+        visibility: nd.visibility,
       })
+      const channelId = chRes.data.id
+
+      await Promise.all(
+        nd.fields.map((f, i) =>
+          fieldsApi.create({ channel_id: channelId, name: f.key || f.name, label: f.name, unit: f.unit, field_type: f.type, position: i + 1 })
+        )
+      )
+
+      setDevices(prev => [apiDeviceToLocal(devRes.data), ...prev])
+      toast(`Device "${nd.name}" registered`)
+      return { channelId, apiKey }
+    } catch {
+      const fallbackChannelId = crypto.randomUUID()
+      setDevices(prev => [{
+        icon: nd.icon, name: nd.name, id: nd.id,
+        status: 'Active', channels: 1, reads: '0', last: 'just now',
+        apiKey: nd.apiKey, description: nd.description, tags: nd.tags,
+        workspace: nd.workspace, channelName: nd.channelName,
+        visibility: nd.visibility, fields: nd.fields,
+      }, ...prev])
+      toast(`Device "${nd.name}" registered`)
+      return { channelId: fallbackChannelId, apiKey: nd.apiKey }
+    }
   }
 
   function handleSaveEdit(id: string, patch: Partial<Device>) {
@@ -702,6 +790,16 @@ export function DevicesPage() {
         toast(isBlocked ? `"${d.name}" unblocked` : `"${d.name}" blocked`, isBlocked ? 'success' : 'error')
       })
       .catch(() => toast('Failed to update device status', 'error'))
+  }
+
+  function handleDelete(id: string) {
+    const d = devices.find(x => x.id === id)
+    devicesApi.delete(id)
+      .then(() => {
+        setDevices(prev => prev.filter(x => x.id !== id))
+        if (d) toast(`"${d.name}" deleted`, 'error')
+      })
+      .catch(() => toast('Failed to delete device', 'error'))
   }
 
   function handleRotateKey(id: string) {
@@ -781,6 +879,7 @@ export function DevicesPage() {
             onEdit={setEditDevice}
             onBlock={setBlockTarget}
             onRotate={setRotateTarget}
+            onDelete={setDeleteTarget}
           />
         ))}
 
@@ -808,7 +907,7 @@ export function DevicesPage() {
       </div>}
 
       {/* Drawers */}
-      <RegisterDeviceDrawer open={registerOpen} onClose={() => setRegisterOpen(false)} onRegister={handleRegister} />
+      <RegisterDeviceDrawer open={registerOpen} onClose={() => setRegisterOpen(false)} onRegister={handleRegister} workspaces={workspaces} />
       <ViewDataDrawer  device={viewDevice} onClose={() => setViewDevice(null)} />
       <EditDeviceDrawer key={editDevice?.id} device={editDevice} onClose={() => setEditDevice(null)} onSave={handleSaveEdit} />
 
@@ -838,6 +937,19 @@ export function DevicesPage() {
           confirmLabel="Rotate Key"
           onConfirm={() => { handleRotateKey(rotateTarget.id); setRotateTarget(null) }}
           onCancel={() => setRotateTarget(null)}
+        />
+      )}
+
+      {/* Delete modal */}
+      {deleteTarget && (
+        <ConfirmModal
+          icon="🗑️"
+          title={`Delete "${deleteTarget.name}"?`}
+          body="This will permanently remove the device and unlink any associated channels. This action cannot be undone."
+          confirmLabel="Delete Device"
+          danger={true}
+          onConfirm={() => { handleDelete(deleteTarget.id); setDeleteTarget(null) }}
+          onCancel={() => setDeleteTarget(null)}
         />
       )}
     </div>

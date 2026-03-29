@@ -23,11 +23,10 @@ import (
 	"github.com/greenlab/ingestion/internal/application"
 	"github.com/greenlab/ingestion/internal/config"
 	infraAPIKey "github.com/greenlab/ingestion/internal/infrastructure/apikey"
+	infraDeviceRegistry "github.com/greenlab/ingestion/internal/infrastructure/deviceregistry"
 	infraKafka "github.com/greenlab/ingestion/internal/infrastructure/kafka"
-	infraPostgres "github.com/greenlab/ingestion/internal/infrastructure/postgres"
 	infraRedis "github.com/greenlab/ingestion/internal/infrastructure/redis"
 	ingestionHTTP "github.com/greenlab/ingestion/internal/transport/http"
-	sharedPostgres "github.com/greenlab/shared/pkg/postgres"
 	sharedRedis "github.com/greenlab/shared/pkg/redis"
 
 	_ "github.com/greenlab/ingestion/docs"
@@ -51,14 +50,6 @@ func main() {
 	// Bridge slog through the same zap core so all log output is uniform.
 	slog.SetDefault(slog.New(zapslog.NewHandler(log.Core(), zapslog.WithCaller(true))))
 
-	db := sharedPostgres.Connect(log, sharedPostgres.Config{
-		DSN:             cfg.Postgres.DSN,
-		MaxOpenConns:    cfg.Postgres.MaxOpenConns,
-		MaxIdleConns:    cfg.Postgres.MaxIdleConns,
-		ConnMaxLifetime: cfg.Postgres.ConnMaxLifetime,
-	})
-	defer db.Close()
-
 	rdb := sharedRedis.Connect(log, sharedRedis.Config{
 		Addr:     cfg.Redis.Addr,
 		Password: cfg.Redis.Password,
@@ -74,8 +65,8 @@ func main() {
 	}()
 
 	apiKeyCache := infraRedis.NewAPIKeyCache(rdb)
-	deviceStore := infraPostgres.NewDeviceStore(db.DB)
-	apiKeyValidator := infraAPIKey.NewValidator(apiKeyCache, deviceStore, slog.Default())
+	deviceRegistryClient := infraDeviceRegistry.NewClient(cfg.DeviceRegistry.BaseURL, nil)
+	apiKeyValidator := infraAPIKey.NewValidator(apiKeyCache, deviceRegistryClient, slog.Default())
 
 	svc := application.NewIngestService(producer, slog.Default(), cfg.Ingest.MaxReadingAge)
 	handler := ingestionHTTP.NewHandler(svc, slog.Default())

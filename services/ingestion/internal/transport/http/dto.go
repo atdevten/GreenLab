@@ -1,14 +1,19 @@
 package http
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // IngestRequest is the payload for a single telemetry write.
 // ChannelID is intentionally absent — it is taken from the authenticated API key context,
 // not from the request body, to prevent a device writing to a foreign channel.
 type IngestRequest struct {
-	Fields    map[string]float64 `json:"fields"    validate:"required"`
-	Tags      map[string]string  `json:"tags"`
-	Timestamp *time.Time         `json:"timestamp"`
+	Fields          map[string]float64    `json:"fields"            validate:"required"`
+	FieldTimestamps map[string]*time.Time `json:"field_timestamps"`
+	Tags            map[string]string     `json:"tags"`
+	Timestamp       *time.Time            `json:"timestamp"`
+	Data            json.RawMessage       `json:"data"` // optional opaque field for clients to include arbitrary JSON; not processed by the service
 }
 
 // BulkIngestRequest contains a list of readings.

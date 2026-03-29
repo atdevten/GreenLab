@@ -40,7 +40,7 @@ docker compose down -v
 | alert-notification | 8005 | Alert rules + notifications |
 | normalization | 8006 | Raw → normalised pipeline worker (health check only) |
 | supporting | 8007 | Video + audit (filtering + CSV export) |
-| PostgreSQL | 5432 | |
+| PostgreSQL | 5433 | |
 | Redis | 6379 | |
 | InfluxDB | 8086 | UI available at `http://localhost:8086` |
 | Kafka | 9092 | |
@@ -59,8 +59,8 @@ In production, serve the built frontend via nginx or a CDN and point
 | Variable | Default | Required |
 | --- | --- | --- |
 | `PORT` | `8001` | no |
-| `DSN` | `postgres://greenlab:greenlab@localhost:5432/greenlab?sslmode=disable` | yes |
-| `REDIS_ADDR` | `localhost:6379` | yes |
+| `DSN` | `postgres://greenlab:greenlab@localhost:5433/greenlab?sslmode=disable` | yes |
+| `REDIS_ADDR` | `localhost:6380` | yes |
 | `REDIS_PASSWORD` | `` | no |
 | `KAFKA_BROKERS` | `localhost:9092` | yes |
 | `JWT_PRIVATE_KEY_PATH` | `keys/private.pem` | yes |
@@ -73,8 +73,8 @@ In production, serve the built frontend via nginx or a CDN and point
 | Variable | Default | Required |
 | --- | --- | --- |
 | `PORT` | `8002` | no |
-| `DSN` | `postgres://greenlab:greenlab@localhost:5432/greenlab?sslmode=disable` | yes |
-| `REDIS_ADDR` | `localhost:6379` | yes |
+| `DSN` | `postgres://greenlab:greenlab@localhost:5433/greenlab?sslmode=disable` | yes |
+| `REDIS_ADDR` | `localhost:6380` | yes |
 | `REDIS_PASSWORD` | `` | no |
 | `KAFKA_BROKERS` | `localhost:9092` | yes |
 | `JWT_PUBLIC_KEY_PATH` | `keys/public.pem` | yes |
@@ -85,7 +85,7 @@ In production, serve the built frontend via nginx or a CDN and point
 | Variable | Default | Required |
 | --- | --- | --- |
 | `PORT` | `8003` | no |
-| `REDIS_ADDR` | `localhost:6379` | yes |
+| `REDIS_ADDR` | `localhost:6380` | yes |
 | `KAFKA_BROKERS` | `localhost:9092` | yes |
 | `LOG_LEVEL` | `info` | no |
 
@@ -110,7 +110,7 @@ In production, serve the built frontend via nginx or a CDN and point
 | `INFLUXDB_TOKEN` | `my-super-secret-token` | yes |
 | `INFLUXDB_ORG` | `greenlab` | yes |
 | `INFLUXDB_BUCKET` | `telemetry` | yes |
-| `REDIS_ADDR` | `localhost:6379` | yes |
+| `REDIS_ADDR` | `localhost:6380` | yes |
 | `REDIS_PASSWORD` | `` | no |
 | `KAFKA_BROKERS` | `localhost:9092` | yes |
 | `JWT_PUBLIC_KEY_PATH` | `keys/public.pem` | yes |
@@ -121,7 +121,7 @@ In production, serve the built frontend via nginx or a CDN and point
 | Variable | Default | Required |
 | --- | --- | --- |
 | `PORT` | `8005` | no |
-| `DSN` | `postgres://greenlab:greenlab@localhost:5432/greenlab?sslmode=disable` | yes |
+| `DSN` | `postgres://greenlab:greenlab@localhost:5433/greenlab?sslmode=disable` | yes |
 | `KAFKA_BROKERS` | `localhost:9092` | yes |
 | `SMTP_HOST` | `smtp.example.com` | yes |
 | `SMTP_PORT` | `587` | yes |
@@ -136,7 +136,7 @@ In production, serve the built frontend via nginx or a CDN and point
 | Variable | Default | Required |
 | --- | --- | --- |
 | `PORT` | `8007` | no |
-| `DSN` | `postgres://greenlab:greenlab@localhost:5432/greenlab?sslmode=disable` | yes |
+| `DSN` | `postgres://greenlab:greenlab@localhost:5433/greenlab?sslmode=disable` | yes |
 | `KAFKA_BROKERS` | `localhost:9092` | yes |
 | `AWS_REGION` | `us-east-1` | yes |
 | `S3_BUCKET` | `greenlab-video` | yes |
@@ -156,7 +156,7 @@ curl http://localhost:8003/health   # ingestion
 curl http://localhost:8004/health   # query-realtime
 curl http://localhost:8005/health   # alert-notification
 curl http://localhost:8007/health   # supporting
-curl http://localhost:8080/health   # nginx gateway
+curl http://localhost:9080/health   # nginx gateway
 ```
 
 Infrastructure health checks configured in `docker-compose.yml`:

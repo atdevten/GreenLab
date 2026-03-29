@@ -203,6 +203,12 @@ const docTemplate = `{
                 "fields"
             ],
             "properties": {
+                "field_timestamps": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
                 "fields": {
                     "type": "object",
                     "additionalProperties": {

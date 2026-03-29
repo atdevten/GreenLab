@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: greenlab
       POSTGRES_DB: greenlab
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Creates per-service databases on first container start (TODO-005).
@@ -20,7 +20,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -276,7 +276,7 @@ services:
   nginx:
     image: nginx:1.27-alpine
     ports:
-      - "8080:8080"
+      - "9080:8080"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     healthcheck:

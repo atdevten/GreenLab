@@ -17,8 +17,8 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 )
 
-// APIKeyLookupFunc validates an API key using the provided request context.
-type APIKeyLookupFunc func(ctx context.Context, key string) (deviceID, channelID string, err error)
+// APIKeyLookupFunc validates an API key + channelID pair and returns the device schema.
+type APIKeyLookupFunc func(ctx context.Context, key, channelID string) (domain.DeviceSchema, error)
 
 func NewRouter(h *Handler, apiKeyLookup APIKeyLookupFunc, logger *slog.Logger, rdb *redis.Client) *gin.Engine {
 	r := gin.New()
@@ -43,7 +43,7 @@ func NewRouter(h *Handler, apiKeyLookup APIKeyLookupFunc, logger *slog.Logger, r
 }
 
 // apiKeyAuth validates the X-API-Key header using the request context so that
-// client cancellations and deadlines propagate to Redis and Postgres.
+// client cancellations and deadlines propagate to Redis and device-registry.
 // ErrDeviceNotFound produces 401; infrastructure errors produce 503 and are logged.
 func apiKeyAuth(lookup APIKeyLookupFunc, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -56,10 +56,11 @@ func apiKeyAuth(lookup APIKeyLookupFunc, logger *slog.Logger) gin.HandlerFunc {
 			return
 		}
 
-		deviceID, channelID, err := lookup(c.Request.Context(), key)
+		channelID := c.Param("channel_id")
+		schema, err := lookup(c.Request.Context(), key, channelID)
 		if err != nil {
 			if errors.Is(err, domain.ErrDeviceNotFound) {
-				response.Abort(c, apierr.Unauthorized("invalid API key"))
+				response.Abort(c, apierr.Unauthorized("invalid API key or channel"))
 			} else {
 				logger.ErrorContext(c.Request.Context(),
 					"api key validation failed due to infrastructure error", "error", err)
@@ -72,7 +73,9 @@ func apiKeyAuth(lookup APIKeyLookupFunc, logger *slog.Logger) gin.HandlerFunc {
 			return
 		}
 
-		c.Set("device_id", deviceID)
+		// Store full schema for compact-format handlers, plus device_id for backward compat.
+		c.Set("device_schema", schema)
+		c.Set("device_id", schema.DeviceID)
 		c.Set("channel_id", channelID)
 		c.Set(sharedMiddleware.ContextKeyAPIKey, key)
 		c.Next()

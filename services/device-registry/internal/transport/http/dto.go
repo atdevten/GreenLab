@@ -33,10 +33,11 @@ type DeviceResponse struct {
 
 // Channel DTOs
 type CreateChannelRequest struct {
-	WorkspaceID string `json:"workspace_id" validate:"required"`
-	Name        string `json:"name"         validate:"required"`
-	Description string `json:"description"`
-	Visibility  string `json:"visibility"`
+	WorkspaceID string  `json:"workspace_id" validate:"required"`
+	DeviceID    *string `json:"device_id"`
+	Name        string  `json:"name"         validate:"required"`
+	Description string  `json:"description"`
+	Visibility  string  `json:"visibility"`
 }
 
 type UpdateChannelRequest struct {

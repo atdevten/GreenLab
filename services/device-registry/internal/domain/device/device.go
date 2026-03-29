@@ -30,6 +30,7 @@ type Device struct {
 	Metadata    []byte // JSONB
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	DeletedAt   *time.Time
 }
 
 // SetName validates and sets the device name.
@@ -90,6 +91,22 @@ func (d *Device) SetStatus(status DeviceStatus) error {
 	default:
 		return ErrInvalidStatus
 	}
+}
+
+// SoftDelete marks the device as deleted by setting DeletedAt to now.
+func (d *Device) SoftDelete() error {
+	if d.DeletedAt != nil {
+		return ErrDeviceAlreadyDeleted
+	}
+	now := time.Now().UTC()
+	d.DeletedAt = &now
+	d.UpdatedAt = now
+	return nil
+}
+
+// IsDeleted returns true if the device has been soft-deleted.
+func (d *Device) IsDeleted() bool {
+	return d.DeletedAt != nil
 }
 
 func generateAPIKey() (string, error) {

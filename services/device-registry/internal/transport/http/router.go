@@ -19,7 +19,7 @@ func securityHeaders() gin.HandlerFunc {
 	}
 }
 
-func NewRouter(deviceH *DeviceHandler, channelH *ChannelHandler, fieldH *FieldHandler, publicKey *rsa.PublicKey) *gin.Engine {
+func NewRouter(deviceH *DeviceHandler, channelH *ChannelHandler, fieldH *FieldHandler, internalH *InternalHandler, publicKey *rsa.PublicKey) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(sharedMiddleware.RequestID())
@@ -63,5 +63,16 @@ func NewRouter(deviceH *DeviceHandler, channelH *ChannelHandler, fieldH *FieldHa
 			fields.DELETE("/:id", fieldH.DeleteField)
 		}
 	}
+	internal := r.Group("/internal")
+	{
+		internal.POST("/validate-api-key", internalH.ValidateAPIKey)
+	}
+
+	// Device-facing schema endpoint — authenticated via X-API-Key header.
+	deviceV1 := r.Group("/v1")
+	{
+		deviceV1.GET("/channels/:id/schema", internalH.GetChannelSchema)
+	}
+
 	return r
 }

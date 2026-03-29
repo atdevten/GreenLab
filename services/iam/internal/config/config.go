@@ -64,13 +64,13 @@ func Load() Config {
 			IdleTimeout:  envDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
 		},
 		Postgres: PostgresConfig{
-			DSN:             env("DSN", "postgres://greenlab:greenlab@localhost:5432/greenlab?sslmode=disable"),
+			DSN:             env("DSN", "postgres://greenlab:greenlab@localhost:5433/greenlab?sslmode=disable"),
 			MaxOpenConns:    envInt("DB_MAX_OPEN_CONNS", 25),
 			MaxIdleConns:    envInt("DB_MAX_IDLE_CONNS", 5),
 			ConnMaxLifetime: envDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
 		},
 		Redis: RedisConfig{
-			Addr:     env("REDIS_ADDR", "localhost:6379"),
+			Addr:     env("REDIS_ADDR", "localhost:6380"),
 			Password: env("REDIS_PASSWORD", ""),
 			DB:       envInt("REDIS_DB", 0),
 		},

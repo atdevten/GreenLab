@@ -74,7 +74,7 @@ func Load() (Config, error) {
 			ShutdownTimeout: envDuration("HTTP_SHUTDOWN_TIMEOUT", 30*time.Second),
 		},
 		Redis: RedisConfig{
-			Addr:     env("REDIS_ADDR", "localhost:6379"),
+			Addr:     env("REDIS_ADDR", "localhost:6380"),
 			Password: env("REDIS_PASSWORD", ""),
 			DB:       envInt("REDIS_DB", 0),
 		},

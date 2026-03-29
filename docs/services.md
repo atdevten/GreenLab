@@ -47,8 +47,8 @@ services/iam/
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` | `8001` | HTTP listen port |
-| `DSN` | `postgres://greenlab:greenlab@localhost:5432/greenlab?sslmode=disable` | PostgreSQL connection string |
-| `REDIS_ADDR` | `localhost:6379` | Redis address |
+| `DSN` | `postgres://greenlab:greenlab@localhost:5433/greenlab?sslmode=disable` | PostgreSQL connection string |
+| `REDIS_ADDR` | `localhost:6380` | Redis address |
 | `REDIS_PASSWORD` | `` | Redis password (optional) |
 | `KAFKA_BROKERS` | `localhost:9092` | Comma-separated Kafka broker list |
 | `JWT_PRIVATE_KEY_PATH` | `keys/private.pem` | Path to RSA private key (PEM) |
@@ -101,8 +101,8 @@ services/device-registry/
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` | `8002` | HTTP listen port |
-| `DSN` | `postgres://greenlab:greenlab@localhost:5432/greenlab?sslmode=disable` | PostgreSQL connection string |
-| `REDIS_ADDR` | `localhost:6379` | Redis address |
+| `DSN` | `postgres://greenlab:greenlab@localhost:5433/greenlab?sslmode=disable` | PostgreSQL connection string |
+| `REDIS_ADDR` | `localhost:6380` | Redis address |
 | `REDIS_PASSWORD` | `` | Redis password (optional) |
 | `KAFKA_BROKERS` | `localhost:9092` | Comma-separated Kafka broker list |
 | `JWT_PUBLIC_KEY_PATH` | `keys/public.pem` | RSA public key for JWT validation |
@@ -149,7 +149,7 @@ services/ingestion/
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` | `8003` | HTTP listen port |
-| `REDIS_ADDR` | `localhost:6379` | Redis address |
+| `REDIS_ADDR` | `localhost:6380` | Redis address |
 | `KAFKA_BROKERS` | `localhost:9092` | Comma-separated Kafka broker list |
 | `LOG_LEVEL` | `info` | Zap log level |
 
@@ -251,7 +251,7 @@ services/query-realtime/
 | `INFLUXDB_TOKEN` | `my-super-secret-token` | InfluxDB auth token |
 | `INFLUXDB_ORG` | `greenlab` | InfluxDB organisation |
 | `INFLUXDB_BUCKET` | `telemetry` | InfluxDB bucket |
-| `REDIS_ADDR` | `localhost:6379` | Redis address |
+| `REDIS_ADDR` | `localhost:6380` | Redis address |
 | `REDIS_PASSWORD` | `` | Redis password (optional) |
 | `KAFKA_BROKERS` | `localhost:9092` | Comma-separated Kafka broker list |
 | `JWT_PUBLIC_KEY_PATH` | `keys/public.pem` | RSA public key for JWT validation |
@@ -307,7 +307,7 @@ services/alert-notification/
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` | `8005` | HTTP listen port |
-| `DSN` | `postgres://greenlab:greenlab@localhost:5432/greenlab?sslmode=disable` | PostgreSQL connection string |
+| `DSN` | `postgres://greenlab:greenlab@localhost:5433/greenlab?sslmode=disable` | PostgreSQL connection string |
 | `KAFKA_BROKERS` | `localhost:9092` | Comma-separated Kafka broker list |
 | `SMTP_HOST` | `smtp.example.com` | SMTP server hostname |
 | `SMTP_PORT` | `587` | SMTP server port |
@@ -362,7 +362,7 @@ services/supporting/
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` | `8007` | HTTP listen port |
-| `DSN` | `postgres://greenlab:greenlab@localhost:5432/greenlab?sslmode=disable` | PostgreSQL connection string |
+| `DSN` | `postgres://greenlab:greenlab@localhost:5433/greenlab?sslmode=disable` | PostgreSQL connection string |
 | `KAFKA_BROKERS` | `localhost:9092` | Comma-separated Kafka broker list |
 | `AWS_REGION` | `us-east-1` | AWS region for S3 |
 | `S3_BUCKET` | `greenlab-video` | S3 bucket name |

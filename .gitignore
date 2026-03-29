@@ -25,3 +25,4 @@ build/
 # macOS
 .DS_Store
 .gstack/
+coverage/

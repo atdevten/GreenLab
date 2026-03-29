@@ -9,12 +9,16 @@ import (
 )
 
 type Config struct {
-	Log      LogConfig
-	HTTP     HTTPConfig
-	Postgres PostgresConfig
-	Redis    RedisConfig
-	Kafka    KafkaConfig
-	Ingest   IngestConfig
+	Log            LogConfig
+	HTTP           HTTPConfig
+	Redis          RedisConfig
+	Kafka          KafkaConfig
+	Ingest         IngestConfig
+	DeviceRegistry DeviceRegistryConfig
+}
+
+type DeviceRegistryConfig struct {
+	BaseURL string
 }
 
 type LogConfig struct {
@@ -28,13 +32,6 @@ type HTTPConfig struct {
 	WriteTimeout    time.Duration
 	IdleTimeout     time.Duration
 	ShutdownTimeout time.Duration
-}
-
-type PostgresConfig struct {
-	DSN             string
-	MaxOpenConns    int
-	MaxIdleConns    int
-	ConnMaxLifetime time.Duration
 }
 
 type RedisConfig struct {
@@ -66,14 +63,8 @@ func Load() Config {
 			IdleTimeout:     envDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
 			ShutdownTimeout: envDuration("HTTP_SHUTDOWN_TIMEOUT", 30*time.Second),
 		},
-		Postgres: PostgresConfig{
-			DSN:             requiredEnv("DSN"),
-			MaxOpenConns:    envInt("DB_MAX_OPEN_CONNS", 25),
-			MaxIdleConns:    envInt("DB_MAX_IDLE_CONNS", 5),
-			ConnMaxLifetime: envDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
-		},
 		Redis: RedisConfig{
-			Addr:     env("REDIS_ADDR", "localhost:6379"),
+			Addr:     env("REDIS_ADDR", "localhost:6380"),
 			Password: env("REDIS_PASSWORD", ""),
 			DB:       envInt("REDIS_DB", 0),
 		},
@@ -82,6 +73,9 @@ func Load() Config {
 		},
 		Ingest: IngestConfig{
 			MaxReadingAge: envDuration("MAX_READING_AGE", 24*time.Hour),
+		},
+		DeviceRegistry: DeviceRegistryConfig{
+			BaseURL: env("DEVICE_REGISTRY_URL", "http://localhost:8002"),
 		},
 	}
 }
@@ -93,16 +87,6 @@ func parseBrokers(s string) []string {
 		parts[i] = strings.TrimSpace(b)
 	}
 	return parts
-}
-
-// requiredEnv returns the value of key or exits if it is unset or empty.
-func requiredEnv(key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		fmt.Fprintf(os.Stderr, "FATAL: required environment variable %q is not set\n", key)
-		os.Exit(1)
-	}
-	return v
 }
 
 func env(key, fallback string) string {

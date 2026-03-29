@@ -1,4 +1,4 @@
-.PHONY: all build test lint tidy up down generate-keys mock migrate-all migrate-up migrate-down swagger
+.PHONY: all build test coverage lint tidy up down generate-keys mock migrate-all migrate-up migrate-down swagger
 
 SERVICES := iam device-registry ingestion normalization query-realtime alert-notification supporting
 
@@ -22,6 +22,32 @@ test:
 		echo "==> Testing $$svc"; \
 		(cd services/$$svc && go test ./...); \
 	done
+
+coverage:
+	@mkdir -p coverage
+	@total_stmts=0; total_covered=0; \
+	for svc in $(SERVICES); do \
+		echo "==> Coverage $$svc"; \
+		(cd services/$$svc && go test ./... -coverprofile=../../coverage/$$svc.out -covermode=atomic 2>/dev/null); \
+		if [ -f coverage/$$svc.out ]; then \
+			pct=$$(go tool cover -func=coverage/$$svc.out | tail -1 | awk '{print $$NF}'); \
+			echo "    $$svc: $$pct"; \
+		fi \
+	done
+	@echo ""
+	@echo "==> HTML reports: coverage/<service>.html"
+	@for svc in $(SERVICES); do \
+		if [ -f coverage/$$svc.out ]; then \
+			go tool cover -html=coverage/$$svc.out -o coverage/$$svc.html; \
+		fi \
+	done
+
+coverage-%:
+	@mkdir -p coverage
+	cd services/$* && go test ./... -coverprofile=../../coverage/$*.out -covermode=atomic
+	go tool cover -func=coverage/$*.out
+	go tool cover -html=coverage/$*.out -o coverage/$*.html
+	@echo "==> HTML report: coverage/$*.html"
 
 lint:
 	@for svc in $(SERVICES); do \
@@ -66,7 +92,7 @@ migrate-up:
 		*) echo "No migrations for service '$(service)'. Valid: iam, device-registry, alert-notification, supporting"; exit 1 ;; \
 	esac; \
 	migrate -path services/$(service)/migrations \
-		-database "postgres://greenlab:greenlab@localhost:5432/$$db?sslmode=disable" up
+		-database "postgres://greenlab:greenlab@localhost:5433/$$db?sslmode=disable" up
 
 migrate-down:
 	@if [ -z "$(service)" ]; then echo "Usage: make migrate-down service=<name>"; exit 1; fi; \
@@ -78,7 +104,7 @@ migrate-down:
 		*) echo "No migrations for service '$(service)'. Valid: iam, device-registry, alert-notification, supporting"; exit 1 ;; \
 	esac; \
 	migrate -path services/$(service)/migrations \
-		-database "postgres://greenlab:greenlab@localhost:5432/$$db?sslmode=disable" down 1
+		-database "postgres://greenlab:greenlab@localhost:5433/$$db?sslmode=disable" down 1
 
 # swagger regenerates Swagger docs for all services that have a docs/ directory.
 # Requires: go install github.com/swaggo/swag/cmd/swag@latest

@@ -11,6 +11,10 @@ definitions:
     type: object
   http.IngestRequest:
     properties:
+      field_timestamps:
+        additionalProperties:
+          type: string
+        type: object
       fields:
         additionalProperties:
           type: number

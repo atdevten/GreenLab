@@ -34,7 +34,7 @@ IoT/
 │   │   ├── pages/              # One component per route
 │   │   ├── components/         # layout/ (Sidebar, Topbar) + ui/ (Button, Card, Badge…)
 │   │   └── types/              # Shared TypeScript interfaces
-│   ├── .env                    # VITE_API_URL (defaults to http://localhost:8080)
+│   ├── .env                    # VITE_API_URL (defaults to http://localhost:9080)
 │   └── package.json
 ├── shared/                     # Shared Go module (github.com/greenlab/shared)
 │   └── pkg/
@@ -141,7 +141,7 @@ make run-supporting
 # 4. Run the frontend dev server
 cd frontend && npm install && npm run dev
 # Dashboard available at http://localhost:5173
-# Backend API available at http://localhost:8080 (via nginx) or direct on service ports
+# Backend API available at http://localhost:9080 (via nginx) or direct on service ports
 ```
 
 ### Running the full stack via Docker Compose
@@ -214,7 +214,7 @@ npx tsc --noEmit
 npm run build
 ```
 
-The frontend reads `VITE_API_URL` from `frontend/.env` (defaults to `http://localhost:8080`). All API calls go through the axios client at `src/api/client.ts`, which automatically attaches the JWT and handles token refresh on 401 responses.
+The frontend reads `VITE_API_URL` from `frontend/.env` (defaults to `http://localhost:9080`). All API calls go through the axios client at `src/api/client.ts`, which automatically attaches the JWT and handles token refresh on 401 responses.
 
 ---
 

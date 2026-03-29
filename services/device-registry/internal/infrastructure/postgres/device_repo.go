@@ -23,6 +23,7 @@ type deviceRow struct {
 	Metadata    []byte              `db:"metadata"`
 	CreatedAt   time.Time           `db:"created_at"`
 	UpdatedAt   time.Time           `db:"updated_at"`
+	DeletedAt   *time.Time          `db:"deleted_at"`
 }
 
 func (r *deviceRow) toDomain() *device.Device {
@@ -37,6 +38,7 @@ func (r *deviceRow) toDomain() *device.Device {
 		Metadata:    r.Metadata,
 		CreatedAt:   r.CreatedAt,
 		UpdatedAt:   r.UpdatedAt,
+		DeletedAt:   r.DeletedAt,
 	}
 }
 
@@ -52,6 +54,7 @@ func toDeviceRow(d *device.Device) *deviceRow {
 		Metadata:    d.Metadata,
 		CreatedAt:   d.CreatedAt,
 		UpdatedAt:   d.UpdatedAt,
+		DeletedAt:   d.DeletedAt,
 	}
 }
 
@@ -72,7 +75,7 @@ func (r *DeviceRepo) Create(ctx context.Context, d *device.Device) error {
 func (r *DeviceRepo) GetByID(ctx context.Context, id uuid.UUID) (*device.Device, error) {
 	var row deviceRow
 	err := r.db.GetContext(ctx, &row,
-		`SELECT id, workspace_id, name, description, api_key, status, last_seen_at, metadata, created_at, updated_at FROM devices WHERE id=$1`, id)
+		`SELECT id, workspace_id, name, description, api_key, status, last_seen_at, metadata, created_at, updated_at, deleted_at FROM devices WHERE id=$1 AND deleted_at IS NULL`, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("DeviceRepo.GetByID: %w", device.ErrDeviceNotFound)
 	}
@@ -85,7 +88,7 @@ func (r *DeviceRepo) GetByID(ctx context.Context, id uuid.UUID) (*device.Device,
 func (r *DeviceRepo) GetByAPIKey(ctx context.Context, apiKey string) (*device.Device, error) {
 	var row deviceRow
 	err := r.db.GetContext(ctx, &row,
-		`SELECT id, workspace_id, name, description, api_key, status, last_seen_at, metadata, created_at, updated_at FROM devices WHERE api_key=$1 AND status=$2`, apiKey, string(device.DeviceStatusActive))
+		`SELECT id, workspace_id, name, description, api_key, status, last_seen_at, metadata, created_at, updated_at, deleted_at FROM devices WHERE api_key=$1 AND status=$2 AND deleted_at IS NULL`, apiKey, string(device.DeviceStatusActive))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("DeviceRepo.GetByAPIKey: %w", device.ErrDeviceNotFound)
 	}
@@ -103,9 +106,9 @@ type deviceListRow struct {
 func (r *DeviceRepo) ListByWorkspace(ctx context.Context, workspaceID uuid.UUID, limit, offset int) ([]*device.Device, int64, error) {
 	var rows []deviceListRow
 	err := r.db.SelectContext(ctx, &rows, `
-		SELECT id, workspace_id, name, description, api_key, status, last_seen_at, metadata, created_at, updated_at,
+		SELECT id, workspace_id, name, description, api_key, status, last_seen_at, metadata, created_at, updated_at, deleted_at,
 		       COUNT(*) OVER() AS total_count
-		FROM devices WHERE workspace_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+		FROM devices WHERE workspace_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
 		workspaceID, limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("DeviceRepo.ListByWorkspace: %w", err)
@@ -132,9 +135,14 @@ func (r *DeviceRepo) Update(ctx context.Context, d *device.Device) error {
 }
 
 func (r *DeviceRepo) Delete(ctx context.Context, id uuid.UUID) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM devices WHERE id=$1`, id)
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE devices SET deleted_at=NOW(), updated_at=NOW() WHERE id=$1 AND deleted_at IS NULL`, id)
 	if err != nil {
 		return fmt.Errorf("DeviceRepo.Delete: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("DeviceRepo.Delete: %w", device.ErrDeviceNotFound)
 	}
 	return nil
 }

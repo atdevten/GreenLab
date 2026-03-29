@@ -349,7 +349,7 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		response.Error(c, mapAuthError(err))
 		return
 	}
-	c.JSON(http.StatusCreated, &SignupResponse{
+	response.Created(c, &SignupResponse{
 		AccessToken:  result.Pair.AccessToken,
 		RefreshToken: result.Pair.RefreshToken,
 		TokenType:    result.Pair.TokenType,

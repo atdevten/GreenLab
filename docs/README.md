@@ -16,7 +16,7 @@ An open-source IoT data platform built with Go and React. Collect sensor reading
 | Time-series DB | InfluxDB 2.7 | Sensor readings / telemetry |
 | Cache | Redis 7 | API key lookup, session tokens, query cache |
 | Message bus | Kafka (Confluent 7.6) | Async event fan-out between services |
-| Reverse proxy | nginx 1.27 | Single entry point (:8080) for all backend services |
+| Reverse proxy | nginx 1.27 | Single entry point (:9080) for all backend services |
 | Container | Docker / Docker Compose | Local dev and deployment |
 | HTTP framework | Gin | REST handlers in every service |
 | Auth | RSA-signed JWT (RS256) + API Key | Users and devices respectively |
@@ -30,12 +30,12 @@ Seven independent backend services sit behind an nginx reverse proxy. The React 
 ```
                         ┌─────────────────────────────────────────────────┐
                         │              Client Layer                        │
-                        │   React Dashboard (:5173 dev / :8080 prod)       │
+                        │   React Dashboard (:5173 dev / :9080 prod)       │
                         └────────────────────┬────────────────────────────┘
-                                             │ HTTP :8080
+                                             │ HTTP :9080
                                     ┌────────▼────────┐
                                     │     nginx       │
-                                    │    :8080        │
+                                    │    :9080        │
                                     └──┬──────────┬───┘
                            JWT         │          │ API Key
                  ┌─────────────────────▼──┐   ┌───▼─────────────┐
@@ -85,8 +85,8 @@ git clone https://github.com/your-org/iot-platform.git && cd iot-platform
 make generate-keys && make up
 
 # 3. Open the dashboard
-open http://localhost:5173   # frontend dev server
-# All backend APIs are available via nginx at http://localhost:8080
+open http://localhost:5174   # frontend dev server (port may increment if 5173 is taken)
+# All backend APIs are available via nginx at http://localhost:9080
 ```
 
 Run a single backend service locally (after infrastructure is up):
@@ -102,6 +102,61 @@ Run the frontend dev server:
 ```bash
 cd frontend && npm install && npm run dev
 ```
+
+### Send a Reading
+
+After signing up and creating a device + channel in the dashboard, grab the device API key and channel ID, then POST a reading through nginx:
+
+```bash
+curl -X POST http://localhost:9080/v1/channels/<channel_id>/data \
+  -H "X-API-Key: <your_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fields": {
+      "temperature": 23.5,
+      "humidity": 61.2
+    },
+    "tags": { "location": "rooftop" },
+    "timestamp": "2026-03-10T14:00:00Z"
+  }'
+```
+
+`timestamp` is optional — omit it and the server uses receive time. `tags` are optional metadata, not stored in time-series.
+
+Response (`201 Created`):
+
+```json
+{
+  "success": true,
+  "data": {
+    "accepted": 1,
+    "written_at": "2026-03-10T14:00:01Z"
+  }
+}
+```
+
+**Send multiple readings at once** (bulk endpoint):
+
+```bash
+curl -X POST http://localhost:9080/v1/channels/<channel_id>/data/bulk \
+  -H "X-API-Key: <your_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "readings": [
+      { "fields": { "temperature": 23.1 }, "timestamp": "2026-03-10T13:59:00Z" },
+      { "fields": { "temperature": 23.5 }, "timestamp": "2026-03-10T14:00:00Z" }
+    ]
+  }'
+```
+
+**Compact formats** for bandwidth-constrained devices (see [api.md](api.md) for full details):
+
+| `Content-Type` | Format | Size |
+|---|---|---|
+| `application/json` | Standard JSON — human-readable | ~100 B |
+| `application/x-greenlab-ojson` | Optimised JSON — positional field array | ~40 B |
+| `application/msgpack` | MessagePack binary — same schema as OJson | ~30 B |
+| `application/x-thingspeak-binary` | Fixed binary frame with CRC16 | 12–28 B |
 
 ---
 

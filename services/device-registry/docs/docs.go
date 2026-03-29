@@ -845,6 +845,9 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "device_id": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },

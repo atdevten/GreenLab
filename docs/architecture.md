@@ -6,7 +6,7 @@
 |---|---|
 | **Boring is good** | PostgreSQL, Redis, Kafka — proven tools over trendy alternatives |
 | **CQRS** | Write path (ingestion) is fully separated from read path (query-realtime) |
-| **Event-driven** | Services communicate via Kafka topics; no direct service-to-service REST calls for data flow |
+| **Event-driven** | Services communicate via Kafka topics for data flow; synchronous HTTP is used only for auth validation (ingestion → device-registry) |
 | **Clean Architecture** | Every service follows domain → application → infrastructure → transport layers |
 | **Single responsibility** | Each service owns one bounded context; no shared databases between services |
 | **Fail-safe auth** | Public key distributed to all services; only identity holds the private key |
@@ -26,8 +26,14 @@ IoT Device
 ┌─────────────────────────────────────────────────────────┐
 │                    ingestion :8003                       │
 │                                                          │
-│  1. Validate API key against Redis cache                 │
-│  2. Publish reading to Kafka topic: raw.sensor.ingest    │
+│  1. Validate API key (channel-scoped):                   │
+│     a. Redis: check sha256(key:channel_id) + version     │
+│     b. Cache miss / version mismatch:                    │
+│        POST device-registry/internal/validate-api-key   │
+│        → {device_id, field_names[], version}             │
+│     c. Cache result (10 min TTL)                         │
+│  2. Validate field names against channel schema          │
+│  3. Publish reading to Kafka topic: raw.sensor.ingest    │
 └──────────────────────┬──────────────────────────────────┘
                        │ Kafka: raw.sensor.ingest
                        ▼
@@ -126,9 +132,9 @@ All services import the shared Go module at `github.com/greenlab/shared`. It con
 
 ### Synchronous (REST)
 
-Services do not call each other's REST APIs during normal data flow. The only implicit coupling is:
+The only synchronous service-to-service call is on the ingestion auth path:
 
-- **ingestion** reads API keys from the Redis cache populated by **device-registry** when a device is created or a key is rotated.
+- **ingestion** → **device-registry** `POST /internal/validate-api-key` — on Redis cache miss or version mismatch. This is the only cross-service HTTP call; it is not on the hot path (Redis absorbs the vast majority of requests). The endpoint is not publicly documented.
 
 ### Asynchronous (Kafka Topics)
 
@@ -153,9 +159,13 @@ Services do not call each other's REST APIs during normal data flow. The only im
 ### API Key (Devices)
 
 1. `device-registry` generates API keys in the format `ts_<64 hex chars>`.
-2. Keys are stored in PostgreSQL and cached in Redis.
-3. `ingestion` validates keys by querying Redis. Cache miss falls back to a direct lookup.
-4. Keys are never reused after rotation — the old key is invalidated atomically.
+2. Keys are stored in PostgreSQL and cached in Redis (key: `sha256(apiKey)`, TTL: 5 min).
+3. `ingestion` validates `(api_key, channel_id)` pairs:
+   - Redis cache key: `sha256(apiKey:channelID)` — credentials are never stored in plaintext.
+   - Cached value includes a `version` field. On cache hit, ingestion reads `device_version:{device_id}` and rejects stale entries.
+   - On cache miss or version mismatch, ingestion calls `POST device-registry/internal/validate-api-key`.
+4. On key rotation or device deletion, `device-registry` increments `device_version:{device_id}` in Redis — old cached entries are immediately treated as stale.
+5. Channel ownership is enforced: a device key is only valid for channels owned by that device.
 
 ### Security Layers
 

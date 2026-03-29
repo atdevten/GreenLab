@@ -18,6 +18,7 @@ func NewChannelService(repo channel.ChannelRepository) *ChannelService {
 
 type CreateChannelInput struct {
 	WorkspaceID string
+	DeviceID    *string // optional
 	Name        string
 	Description string
 	Visibility  string
@@ -31,6 +32,13 @@ func (s *ChannelService) CreateChannel(ctx context.Context, in CreateChannelInpu
 	ch, err := channel.NewChannel(wsID, in.Name, in.Description, channel.ChannelVisibility(in.Visibility))
 	if err != nil {
 		return nil, fmt.Errorf("CreateChannel.NewChannel: %w", err)
+	}
+	if in.DeviceID != nil {
+		devID, err := uuid.Parse(*in.DeviceID)
+		if err != nil {
+			return nil, fmt.Errorf("CreateChannel.ParseDeviceID: %w", err)
+		}
+		ch.DeviceID = &devID
 	}
 	if err := s.repo.Create(ctx, ch); err != nil {
 		return nil, fmt.Errorf("CreateChannel.repo.Create: %w", err)

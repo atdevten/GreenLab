@@ -7,7 +7,7 @@ Each service exposes its own HTTP server. In local development, services are acc
 | Environment | Pattern |
 | --- | --- |
 | Local (direct) | `http://localhost:<port>/api/v1` |
-| Local (via nginx) | `http://localhost:8080/api/v1` |
+| Local (via nginx) | `http://localhost:9080/api/v1` |
 | Production | `https://api.greenlab.io/v1` |
 
 All request and response bodies are `application/json` unless noted.
@@ -306,13 +306,33 @@ Response includes a `key` field — only returned on creation:
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
 | `POST` | `/v1/channels/:channel_id/data` | DEVICE | Ingest a single reading |
-| `POST` | `/v1/channels/:channel_id/data/bulk` | DEVICE | Ingest a batch of readings |
+| `POST` | `/v1/channels/:channel_id/data/bulk` | DEVICE | Ingest a batch of readings (JSON only) |
 
-All ingestion endpoints require the `X-API-Key` header. The `channel_id` path parameter must match the channel bound to the API key — mismatches return `403`.
+**Authentication:** pass the API key in the `X-API-Key` header or as `?api_key=<key>` query param. The `channel_id` in the path must match the channel bound to the key — mismatches return `403 device_id_mismatch`.
 
-Publish failures (Kafka unavailable) return `503 Service Unavailable`.
+**Rate limit:** 100 requests per minute per API key. Exceeding the limit returns `429`.
 
-#### POST /v1/channels/:channel_id/data
+**Publish failures** (Kafka unavailable) return `503 service_unavailable`.
+
+### Content-Type formats
+
+The single endpoint (`/data`) supports multiple wire formats selected by `Content-Type`. Choose based on your device's constraints:
+
+| `Content-Type` | Format | Max body | Best for |
+| --- | --- | --- | --- |
+| `application/json` *(default)* | Standard JSON — named fields | 1 MB | Development, servers |
+| `application/x-greenlab-ojson` | Optimised JSON — positional field array | 1 MB | Moderate bandwidth savings |
+| `application/msgpack` | MessagePack binary — same schema as OJson | 1 MB | Low-power devices with msgpack support |
+| `application/x-thingspeak-binary` | Fixed binary frame with CRC16 integrity check | 32 B | Ultra-constrained microcontrollers |
+| `application/x-protobuf` | Protocol Buffers | — | *Coming soon* |
+
+The bulk endpoint (`/data/bulk`) accepts `application/json` only.
+
+---
+
+#### POST /v1/channels/:channel_id/data — JSON
+
+Standard format. Field values must be `float64`. `channel_id` is taken from the URL — **do not include it in the body**.
 
 ```json
 {
@@ -320,25 +340,88 @@ Publish failures (Kafka unavailable) return `503 Service Unavailable`.
     "temperature": 23.5,
     "humidity": 61.2
   },
+  "field_timestamps": {
+    "temperature": "2026-03-10T14:00:00.000Z",
+    "humidity":    "2026-03-10T14:00:00.180Z"
+  },
   "tags": {
     "location": "rooftop"
   },
-  "timestamp": "2026-03-10T14:00:00Z"
+  "timestamp": "2026-03-10T14:00:00Z",
+  "data": { "raw_adc": 1023 }
 }
 ```
 
-`channel_id` is taken from the URL path and the authenticated API key context — **do not include it in the body**. `timestamp` is optional; defaults to server receive time if omitted.
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `fields` | `object<string, float64>` | yes | Named field values |
+| `field_timestamps` | `object<string, RFC3339>` | no | Per-field timestamps; overrides `timestamp` for that field |
+| `tags` | `object<string, string>` | no | Metadata labels (not stored in time-series) |
+| `timestamp` | RFC3339 string | no | Reading time; defaults to server receive time |
+| `data` | any JSON | no | Opaque pass-through blob; stored but not processed |
 
 Response (`201 Created`):
 
 ```json
 {
-  "accepted": 1,
-  "written_at": "2026-03-10T14:00:01Z"
+  "success": true,
+  "data": {
+    "accepted": 1,
+    "written_at": "2026-03-10T14:00:01Z"
+  }
 }
 ```
 
+---
+
+#### POST /v1/channels/:channel_id/data — OJson (`application/x-greenlab-ojson`)
+
+Compact JSON using positional field indexing. Fields map to the channel's field schema by 1-based index (field 1, 2, 3…).
+
+```json
+{ "f": [23.5, 61.2], "t": 1741426620000, "td": [0, 180], "sv": 1 }
+```
+
+| Key | Type | Required | Description |
+| --- | --- | --- | --- |
+| `f` | `float64[]` | yes | Field values in schema index order (index 1, 2, …) |
+| `t` | `int64` | no | Unix timestamp in **milliseconds**; defaults to server receive time |
+| `td` | `uint16[]` | no | Per-field timestamp deltas in **milliseconds** from `t`; must have same length as `f` |
+| `sv` | `uint32` | no | Schema version; validated against the channel's current schema version |
+
+---
+
+#### POST /v1/channels/:channel_id/data — MsgPack (`application/msgpack`)
+
+Identical schema to OJson, encoded as MessagePack. Keys are the same compact short names: `f`, `t`, `td`, `sv`.
+
+---
+
+#### POST /v1/channels/:channel_id/data — Binary (`application/x-thingspeak-binary`)
+
+Fixed-length binary frame for ultra-constrained devices. Max 32 bytes.
+
+```
+Byte offset  Length  Field
+──────────────────────────────────────────────────────────
+0            1       VER — schema version (uint8)
+1–4          4       DEVID — first 4 bytes of device UUID (big-endian)
+5–8          4       TS — unix timestamp in seconds (uint32 big-endian)
+9            1       FIELDMSK — bitmask; bit i set → field index i+1 present
+10…10+N×2    N×2     VALUES — N × uint16 big-endian (N = popcount(FIELDMSK))
+10+N×2…end   2       CRC16/CCITT-FALSE over all preceding bytes
+```
+
+- Frame length: `12 + N×2` bytes where N = number of set bits in FIELDMSK (max 8 fields → 28 bytes)
+- DEVID must match the first 4 bytes of the authenticated device UUID; mismatch returns `403`
+- CRC mismatch returns `400 crc_mismatch`
+- Field values are raw `uint16`; no scale/offset applied (scale support planned)
+
+---
+
 #### POST /v1/channels/:channel_id/data/bulk
+
+Ingest multiple readings in a single request. JSON only.
 
 ```json
 {
@@ -348,12 +431,40 @@ Response (`201 Created`):
       "timestamp": "2026-03-10T13:59:00Z"
     },
     {
-      "fields": { "temperature": 23.5 },
+      "fields": { "temperature": 23.5, "humidity": 61.2 },
+      "field_timestamps": { "humidity": "2026-03-10T14:00:00.180Z" },
       "timestamp": "2026-03-10T14:00:00Z"
     }
   ]
 }
 ```
+
+Each entry in `readings` accepts the same fields as the single-reading JSON body. Response includes total accepted count:
+
+```json
+{
+  "success": true,
+  "data": {
+    "accepted": 2,
+    "written_at": "2026-03-10T14:00:01Z"
+  }
+}
+```
+
+### Ingestion Error Codes
+
+| HTTP | Code | Cause |
+| --- | --- | --- |
+| 400 | `validation_error` | Missing `fields`, invalid JSON |
+| 400 | `crc_mismatch` | Binary frame CRC check failed |
+| 400 | `invalid_frame_length` | Binary frame wrong length for FIELDMSK |
+| 400 | `ts_delta_invalid` | `td` length doesn't match `f` length |
+| 400 | `timestamp_too_old` / `timestamp_future` | Timestamp outside acceptable window |
+| 403 | `device_id_mismatch` | Binary DEVID doesn't match authenticated device |
+| 409 | `schema_version_mismatch` | `sv` doesn't match current channel schema version |
+| 413 | `payload_too_large` | Body exceeds format limit |
+| 415 | `unsupported_media_type` | Unknown `Content-Type` |
+| 503 | `service_unavailable` | Kafka publish failed |
 
 ---
 

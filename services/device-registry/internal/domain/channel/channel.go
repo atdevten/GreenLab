@@ -66,6 +66,7 @@ func NewChannel(workspaceID uuid.UUID, name, description string, visibility Chan
 		Name:        name,
 		Description: description,
 		Visibility:  visibility,
+		Tags:        []byte("[]"),
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}, nil

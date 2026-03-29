@@ -118,17 +118,22 @@ func RequireRoles(roles ...string) gin.HandlerFunc {
 
 func extractBearerToken(c *gin.Context) (string, error) {
 	header := c.GetHeader("Authorization")
-	if header == "" {
-		return "", errors.New("missing Authorization header")
+	if header != "" {
+		parts := strings.SplitN(header, " ", 2)
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
+			return "", errors.New("invalid Authorization header format")
+		}
+		if parts[1] == "" {
+			return "", errors.New("empty token")
+		}
+		return parts[1], nil
 	}
-	parts := strings.SplitN(header, " ", 2)
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
-		return "", errors.New("invalid Authorization header format")
+	// Fall back to ?token= query param for WebSocket connections
+	// (browsers cannot set custom headers for WebSocket upgrades)
+	if token := c.Query("token"); token != "" {
+		return token, nil
 	}
-	if parts[1] == "" {
-		return "", errors.New("empty token")
-	}
-	return parts[1], nil
+	return "", errors.New("missing Authorization header")
 }
 
 // GetUserID is a helper that extracts the user ID from context.

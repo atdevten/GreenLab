@@ -5,6 +5,7 @@ import { Card, CardTitle } from '../components/ui/Card'
 import { useToast } from '../contexts/ToastContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { channelsApi } from '../api/channels'
+import { fieldsApi } from '../api/fields'
 import { workspacesApi } from '../api/workspaces'
 import { devicesApi } from '../api/devices'
 import type { Channel as ApiChannel, Workspace } from '../types'
@@ -277,15 +278,49 @@ function EditSchemaDrawer({ channel, onClose, onSave }: {
   onSave(id: string, fields: FieldDef[]): void
 }) {
   useEscapeKey(onClose, channel != null)
-  const [fields, setFields] = useState<FieldDef[]>(() =>
-    !channel ? [] : Array.from({ length: 8 }, (_, i) => {
-      const existing = channel.fields[i]
-      return existing ?? {
-        key: `field${i + 1}`, name: '', unit: '', type: 'number' as const,
-        color: FIELD_COLORS[i % FIELD_COLORS.length], enabled: false,
-      }
-    })
+  const [fields, setFields] = useState<FieldDef[]>(
+    Array.from({ length: 8 }, (_, i) => ({
+      key: `field${i + 1}`, name: '', unit: '', type: 'number' as const,
+      color: FIELD_COLORS[i % FIELD_COLORS.length], enabled: false,
+    }))
   )
+  const [loadingFields, setLoadingFields] = useState(false)
+
+  // Fetch existing fields for this channel when it opens
+  useEffect(() => {
+    if (!channel) return
+    setLoadingFields(true)
+    fieldsApi.list(channel.id)
+      .then(res => {
+        if ((res.data as any[]).length > 0) {
+          const slots = Array.from({ length: 8 }, (_, i) => ({
+            key: `field${i + 1}`, name: '', unit: '', type: 'number' as const,
+            color: FIELD_COLORS[i % FIELD_COLORS.length], enabled: false,
+          }))
+          ;(res.data as any[]).forEach(f => {
+            const pos = (f.position ?? 1) - 1
+            if (pos >= 0 && pos < 8) {
+              slots[pos] = {
+                key:     f.name,
+                name:    f.label || f.name,
+                unit:    f.unit ?? '',
+                type:    (f.field_type === 'float' || f.field_type === 'integer' ? 'number' : f.field_type) as FieldDef['type'],
+                color:   FIELD_COLORS[pos % FIELD_COLORS.length],
+                enabled: true,
+              }
+            }
+          })
+          setFields(slots)
+        } else {
+          setFields(Array.from({ length: 8 }, (_, i) => ({
+            key: `field${i + 1}`, name: '', unit: '', type: 'number' as const,
+            color: FIELD_COLORS[i % FIELD_COLORS.length], enabled: false,
+          })))
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingFields(false))
+  }, [channel?.id])
 
   if (!channel) return null
 
@@ -426,63 +461,23 @@ function DeleteModal({ channel, onClose, onConfirm }: {
 
 // ── Create Channel Drawer ────────────────────────────────────────────────────
 
-const DEVICES   = ['Greenhouse Sensor A', 'Farm Node B', 'Air Monitor', 'Water Quality Probe', 'R&D Lab Node', 'Solar Tracker']
-const WORKSPACES = ['Default', 'Farm', 'R&D']
-
-function blankFields(): FieldDef[] {
-  return Array.from({ length: 8 }, (_, i) => ({
-    key: `field${i + 1}`, name: '', unit: '', type: 'number' as const,
-    color: FIELD_COLORS[i % FIELD_COLORS.length], enabled: false,
-  }))
-}
-
-function Stepper({ step }: { step: number }) {
-  const steps = ['Channel Details', 'Field Schema']
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '14px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-      {steps.map((s, i) => {
-        const done   = i < step
-        const active = i === step
-        return (
-          <div key={s} style={{ display: 'flex', alignItems: 'center', flex: i < steps.length - 1 ? 1 : undefined }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <div style={{
-                width: 22, height: 22, borderRadius: '50%', fontSize: 11, fontWeight: 700,
-                display: 'grid', placeItems: 'center',
-                background: done ? 'var(--green)' : active ? 'var(--accent)' : 'transparent',
-                border: `2px solid ${done ? 'var(--green)' : active ? 'var(--accent)' : 'var(--border)'}`,
-                color: (done || active) ? '#fff' : 'var(--muted)',
-                transition: 'all 180ms',
-              }}>{done ? '✓' : i + 1}</div>
-              <span style={{ fontSize: 12, fontWeight: active ? 600 : 400, color: active ? 'var(--text)' : 'var(--muted)' }}>{s}</span>
-            </div>
-            {i < steps.length - 1 && (
-              <div style={{ flex: 1, height: 1, background: done ? 'var(--green)' : 'var(--border)', margin: '0 10px', transition: 'background 180ms' }} />
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function CreateChannelDrawer({ open, onClose, onCreate }: {
+function CreateChannelDrawer({ open, onClose, onCreate, workspaceOptions, deviceOptions }: {
   open: boolean
   onClose(): void
-  onCreate(ch: Channel): void
+  onCreate(name: string, deviceId: string, workspaceId: string, isPublic: boolean, tags: string[]): void
+  workspaceOptions: { id: string; name: string }[]
+  deviceOptions: { id: string; name: string }[]
 }) {
-  const [step,       setStep]      = useState(0)
   const [name,       setName]      = useState('')
-  const [device,     setDevice]    = useState(DEVICES[0])
-  const [workspace,  setWorkspace] = useState(WORKSPACES[0])
+  const [device,     setDevice]    = useState(deviceOptions[0]?.id ?? '')
+  const [workspace,  setWorkspace] = useState(workspaceOptions[0]?.id ?? '')
   const [tagInput,   setTagInput]  = useState('')
   const [tags,       setTags]      = useState<string[]>([])
   const [isPublic,   setIsPublic]  = useState(false)
-  const [fields,     setFields]    = useState<FieldDef[]>(blankFields)
 
   function reset() {
-    setStep(0); setName(''); setDevice(DEVICES[0]); setWorkspace(WORKSPACES[0])
-    setTagInput(''); setTags([]); setIsPublic(false); setFields(blankFields())
+    setName(''); setDevice(deviceOptions[0]?.id ?? ''); setWorkspace(workspaceOptions[0]?.id ?? '')
+    setTagInput(''); setTags([]); setIsPublic(false)
   }
 
   function handleClose() { onClose(); setTimeout(reset, 300) }
@@ -493,33 +488,18 @@ function CreateChannelDrawer({ open, onClose, onCreate }: {
     setTagInput('')
   }
 
-  function updateField(idx: number, patch: Partial<FieldDef>) {
-    setFields(prev => prev.map((f, i) => i === idx ? { ...f, ...patch } : f))
-  }
-
-  function toggleField(idx: number) {
-    setFields(prev => prev.map((f, i) => i === idx ? { ...f, enabled: !f.enabled } : f))
-  }
-
   function handleCreate() {
-    const activeFields = fields.filter(f => f.enabled && f.name.trim())
-    const id = `ch_${Math.random().toString(36).slice(2, 9)}`
-    onCreate({
-      id, name: name.trim(), device, workspace, tags,
-      fields: activeFields, public: isPublic,
-      lastReading: '—', readings: '0', updated: 'just now',
-    })
+    onCreate(name.trim(), device, workspace, isPublic, tags)
     handleClose()
   }
 
-  const step1Valid = name.trim().length > 0
-  const enabledCount = fields.filter(f => f.enabled && f.name.trim()).length
+  const valid = name.trim().length > 0
 
   return (
     <>
       {open && <div onClick={handleClose} style={drawerOverlay} />}
       <div style={{
-        ...drawerBase, width: 500,
+        ...drawerBase, width: 480,
         transform: open ? 'translateX(0)' : 'translateX(100%)',
         transition: 'transform 300ms cubic-bezier(.4,0,.2,1)',
       }}>
@@ -530,161 +510,94 @@ function CreateChannelDrawer({ open, onClose, onCreate }: {
           <button onClick={handleClose} style={{ width: 30, height: 30, borderRadius: 'var(--radius)', display: 'grid', placeItems: 'center', fontSize: 18, color: 'var(--muted)', cursor: 'pointer', background: 'transparent', border: 'none' }}>✕</button>
         </div>
 
-        <Stepper step={step} />
-
         {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px' }}>
+          <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>
+            Create a new data channel. Use <strong style={{ color: 'var(--text)' }}>Edit Schema</strong> afterwards to configure fields.
+          </p>
 
-          {/* Step 1 — Details */}
-          {step === 0 && (
-            <>
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>Channel Name <span style={{ color: 'var(--red)' }}>*</span></label>
-                <input
-                  value={name} onChange={e => setName(e.target.value)}
-                  placeholder="e.g. Greenhouse A — Env"
-                  style={inputStyle} autoFocus
-                />
-              </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>Channel Name <span style={{ color: 'var(--red)' }}>*</span></label>
+            <input
+              value={name} onChange={e => setName(e.target.value)}
+              placeholder="e.g. Greenhouse A — Env"
+              style={inputStyle} autoFocus
+            />
+          </div>
 
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>Device</label>
-                <select value={device} onChange={e => setDevice(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
-                  {DEVICES.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>Device</label>
+            <select value={device} onChange={e => setDevice(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+              {deviceOptions.length === 0
+                ? <option value="">No devices in this workspace</option>
+                : deviceOptions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)
+              }
+            </select>
+          </div>
 
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>Workspace</label>
-                <select value={workspace} onChange={e => setWorkspace(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
-                  {WORKSPACES.map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-              </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>Workspace</label>
+            <select value={workspace} onChange={e => setWorkspace(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+              {workspaceOptions.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+          </div>
 
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>Tags</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    value={tagInput}
-                    onChange={e => setTagInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag() } }}
-                    placeholder="e.g. env, production"
-                    style={{ ...inputStyle, flex: 1 }}
-                  />
-                  <Btn variant="ghost" size="sm" onClick={addTag} disabled={!tagInput.trim()}>Add</Btn>
-                </div>
-                {tags.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                    {tags.map(t => (
-                      <span key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 99, background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--muted)' }}>
-                        {t}
-                        <button onClick={() => setTags(prev => prev.filter(x => x !== t))} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 11, padding: 0, lineHeight: 1 }}>✕</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 5 }}>Press Enter or comma to add a tag.</div>
-              </div>
-
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>Visibility</label>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  {[false, true].map(v => (
-                    <div
-                      key={String(v)}
-                      onClick={() => setIsPublic(v)}
-                      style={{
-                        flex: 1, padding: '10px 14px', borderRadius: 'var(--radius)',
-                        border: `1px solid ${isPublic === v ? 'var(--accent)' : 'var(--border)'}`,
-                        background: isPublic === v ? 'rgba(37,99,235,.1)' : 'var(--surface2)',
-                        cursor: 'pointer', transition: 'all .15s',
-                      }}
-                    >
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{v ? '🌐 Public' : '🔒 Private'}</div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                        {v ? 'Anyone can read this channel' : 'Only workspace members can access'}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Step 2 — Field Schema */}
-          {step === 1 && (
-            <>
-              <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>
-                Define up to 8 data fields. You can always edit these later.
-                <span style={{ display: 'block', color: 'var(--text)', fontWeight: 600, marginTop: 4 }}>{enabledCount} / 8 fields configured</span>
-              </p>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 80px 90px', gap: 8, marginBottom: 4 }}>
-                {['Field', 'Name', 'Unit', 'Type'].map(h => (
-                  <div key={h} style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', padding: '0 2px' }}>{h}</div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>Tags</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                value={tagInput}
+                onChange={e => setTagInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag() } }}
+                placeholder="e.g. env, production"
+                style={{ ...inputStyle, flex: 1 }}
+              />
+              <Btn variant="ghost" size="sm" onClick={addTag} disabled={!tagInput.trim()}>Add</Btn>
+            </div>
+            {tags.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                {tags.map(t => (
+                  <span key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 99, background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--muted)' }}>
+                    {t}
+                    <button onClick={() => setTags(prev => prev.filter(x => x !== t))} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 11, padding: 0, lineHeight: 1 }}>✕</button>
+                  </span>
                 ))}
               </div>
+            )}
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 5 }}>Press Enter or comma to add a tag.</div>
+          </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {fields.map((f, i) => (
-                  <div key={f.key} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 80px 90px', gap: 8, alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <button
-                        onClick={() => toggleField(i)}
-                        style={{
-                          width: 16, height: 16, borderRadius: 4,
-                          border: `2px solid ${f.enabled ? f.color : 'var(--border)'}`,
-                          background: f.enabled ? f.color : 'transparent',
-                          cursor: 'pointer', flexShrink: 0, transition: 'all .15s',
-                        }}
-                      />
-                      <span style={{ fontFamily: 'monospace', fontSize: 11, color: f.enabled ? f.color : 'var(--muted)', fontWeight: 700 }}>{f.key}</span>
-                    </div>
-                    <input
-                      value={f.name}
-                      onChange={e => updateField(i, { name: e.target.value, enabled: e.target.value.trim().length > 0 })}
-                      placeholder="e.g. Temperature"
-                      style={{ ...inputStyle, opacity: f.enabled || f.name ? 1 : .45 }}
-                    />
-                    <input
-                      value={f.unit}
-                      onChange={e => updateField(i, { unit: e.target.value })}
-                      placeholder="°C"
-                      disabled={!f.enabled && !f.name}
-                      style={{ ...inputStyle, opacity: f.enabled || f.name ? 1 : .45 }}
-                    />
-                    <select
-                      value={f.type}
-                      onChange={e => updateField(i, { type: e.target.value as FieldDef['type'] })}
-                      disabled={!f.enabled && !f.name}
-                      style={{ ...inputStyle, opacity: f.enabled || f.name ? 1 : .45, cursor: 'pointer' }}
-                    >
-                      {TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>Visibility</label>
+            <div style={{ display: 'flex', gap: 10 }}>
+              {[false, true].map(v => (
+                <div
+                  key={String(v)}
+                  onClick={() => setIsPublic(v)}
+                  style={{
+                    flex: 1, padding: '10px 14px', borderRadius: 'var(--radius)',
+                    border: `1px solid ${isPublic === v ? 'var(--accent)' : 'var(--border)'}`,
+                    background: isPublic === v ? 'rgba(37,99,235,.1)' : 'var(--surface2)',
+                    cursor: 'pointer', transition: 'all .15s',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{v ? '🌐 Public' : '🔒 Private'}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                    {v ? 'Anyone can read this channel' : 'Only workspace members can access'}
                   </div>
-                ))}
-              </div>
-            </>
-          )}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Footer */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 20px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-          {step === 1 && (
-            <Btn variant="ghost" size="sm" onClick={() => setFields(blankFields())}>Reset Fields</Btn>
-          )}
           <div style={{ flex: 1 }} />
           <Btn variant="ghost" onClick={handleClose}>Cancel</Btn>
-          {step === 0 ? (
-            <Btn variant="primary" onClick={() => setStep(1)} disabled={!step1Valid} style={{ opacity: step1Valid ? 1 : .5 }}>
-              Next: Fields →
-            </Btn>
-          ) : (
-            <>
-              <Btn variant="ghost" onClick={() => setStep(0)}>← Back</Btn>
-              <Btn variant="primary" onClick={handleCreate}>Create Channel</Btn>
-            </>
-          )}
+          <Btn variant="primary" onClick={handleCreate} disabled={!valid} style={{ opacity: valid ? 1 : .5 }}>
+            Create Channel
+          </Btn>
         </div>
       </div>
     </>
@@ -727,6 +640,7 @@ export function ChannelsPage() {
   const [workspaces,    setWorkspaces]   = useState<Workspace[]>([])
   const [activeWsId,    setActiveWsId]   = useState('')
   const [wsLoaded,      setWsLoaded]     = useState(false)
+  const [devices,       setDevices]      = useState<{ id: string; name: string }[]>([])
 
   const orgId = localStorage.getItem('org_id') ?? ''
 
@@ -749,6 +663,8 @@ export function ChannelsPage() {
     setLoading(true)
     devicesApi.list({ workspace_id: activeWsId })
       .then(r => {
+        const devList = r.data.map((d: any) => ({ id: d.id, name: d.name }))
+        setDevices(devList)
         const deviceIds = r.data.map((d: any) => d.id)
         if (deviceIds.length === 0) { setChannels([]); setLoading(false); return }
         const wsName = workspaces.find(w => w.id === activeWsId)?.name ?? ''
@@ -763,30 +679,43 @@ export function ChannelsPage() {
   const publicCount  = channels.filter(c => c.public).length
   const privateCount = channels.length - publicCount
 
-  function handleCreate(ch: Channel) {
+  function handleCreate(name: string, deviceId: string, workspaceId: string, isPublic: boolean, _tags: string[]) {
     channelsApi.create({
-      device_id: ch.device,
-      name: ch.name,
-      visibility: ch.public ? 'public' : 'private',
-      tags: ch.tags,
-      fields: ch.fields.filter(f => f.enabled && f.name).map(f => ({ key: f.key, name: f.name, unit: f.unit, type: f.type === 'number' ? 'float' : f.type as 'string' | 'boolean' | 'integer' | 'float' })),
+      workspace_id: workspaceId || activeWsId,
+      device_id: deviceId || undefined,
+      name,
+      visibility: isPublic ? 'public' : 'private',
     })
       .then(r => {
-        const wsName = workspaces.find(w => w.id === activeWsId)?.name ?? ''
+        const wsName = workspaces.find(w => w.id === (workspaceId || activeWsId))?.name ?? ''
         setChannels(prev => [...prev, apiChannelToLocal(r.data, wsName)])
-        toast(`Channel "${ch.name}" created`)
+        toast(`Channel "${name}" created`)
       })
       .catch(() => toast('Failed to create channel', 'error'))
   }
 
-  function handleSaveSchema(id: string, fields: FieldDef[]) {
+  async function handleSaveSchema(id: string, fields: FieldDef[]) {
     const ch = channels.find(c => c.id === id)
-    channelsApi.updateFields(id, fields.map(f => ({ key: f.key, name: f.name, unit: f.unit, type: f.type === 'number' ? 'float' : f.type as 'string' | 'boolean' | 'integer' | 'float' })))
-      .then(() => {
-        setChannels(prev => prev.map(c => c.id === id ? { ...c, fields } : c))
-        if (ch) toast(`Schema saved for "${ch.name}"`)
-      })
-      .catch(() => { if (ch) toast(`Failed to save schema for "${ch.name}"`, 'error') })
+    try {
+      const existing = await fieldsApi.list(id)
+      await Promise.all((existing.data as any[]).map(f => fieldsApi.delete(f.id)))
+      await Promise.all(
+        fields.map((f, i) =>
+          fieldsApi.create({
+            channel_id: id,
+            name:       f.key,
+            label:      f.name,
+            unit:       f.unit,
+            field_type: f.type === 'number' ? 'float' : f.type as any,
+            position:   i + 1,
+          })
+        )
+      )
+      setChannels(prev => prev.map(c => c.id === id ? { ...c, fields } : c))
+      if (ch) toast(`Schema saved for "${ch.name}"`)
+    } catch {
+      if (ch) toast(`Failed to save schema for "${ch.name}"`, 'error')
+    }
   }
 
   function handleDelete(id: string) {
@@ -938,7 +867,13 @@ export function ChannelsPage() {
       </Card>
 
       {/* Drawers & modals */}
-      <CreateChannelDrawer open={createOpen} onClose={() => setCreateOpen(false)} onCreate={handleCreate} />
+      <CreateChannelDrawer
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreate={handleCreate}
+        workspaceOptions={workspaces}
+        deviceOptions={devices}
+      />
       <ViewChannelDrawer channel={viewTarget} onClose={() => setViewTarget(null)} />
       <EditSchemaDrawer
         key={editTarget?.id}
