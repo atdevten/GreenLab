@@ -34,7 +34,7 @@ interface Channel {
   public: boolean
 }
 
-// ── Seed data ───────────────────────────────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────────────────────
 
 const FIELD_COLORS = [
   'var(--accent)',
@@ -46,74 +46,6 @@ const FIELD_COLORS = [
   '#f97316',
   '#a78bfa',
 ]
-
-function mkFields(defs: [string, string, 'number' | 'boolean' | 'string'][]): FieldDef[] {
-  return defs.map(([name, unit, type], i) => ({
-    key: `field${i + 1}`, name, unit, type,
-    color: FIELD_COLORS[i % FIELD_COLORS.length], enabled: true,
-  }))
-}
-
-const CHANNELS: Channel[] = [
-  {
-    id: 'ch_001', name: 'Greenhouse A — Env', device: 'Greenhouse Sensor A',
-    workspace: 'Default', tags: ['env', 'production'],
-    fields: mkFields([['Temperature','°C','number'],['Humidity','%','number'],['CO₂','ppm','number'],['Light','lux','number']]),
-    lastReading: '23.4 °C', readings: '42,110', updated: '12s ago', public: true,
-  },
-  {
-    id: 'ch_002', name: 'Farm Node B — Soil', device: 'Farm Node B',
-    workspace: 'Farm', tags: ['soil', 'farm'],
-    fields: mkFields([['Moisture','%','number'],['pH','','number'],['Nitrogen','mg/kg','number'],['Phosphorus','mg/kg','number'],['Potassium','mg/kg','number']]),
-    lastReading: '41.2 %', readings: '38,520', updated: '8s ago', public: false,
-  },
-  {
-    id: 'ch_003', name: 'Air Monitor — Quality', device: 'Air Monitor',
-    workspace: 'Default', tags: ['air', 'quality', 'public'],
-    fields: mkFields([['PM2.5','µg/m³','number'],['PM10','µg/m³','number'],['CO','ppm','number'],['NO₂','ppb','number'],['O₃','ppb','number'],['AQI','','number']]),
-    lastReading: '12 µg/m³', readings: '27,094', updated: '5s ago', public: true,
-  },
-  {
-    id: 'ch_004', name: 'Water Quality', device: 'Water Quality Probe',
-    workspace: 'Default', tags: ['water'],
-    fields: mkFields([['Temp','°C','number'],['pH','','number'],['DO','mg/L','number'],['Turbidity','NTU','number'],['TDS','ppm','number']]),
-    lastReading: '7.2 pH', readings: '19,882', updated: '2m ago', public: false,
-  },
-  {
-    id: 'ch_005', name: 'R&D Lab — Sensors', device: 'R&D Lab Node',
-    workspace: 'R&D', tags: ['r&d', 'experimental'],
-    fields: mkFields([['Voltage','V','number'],['Current','mA','number']]),
-    lastReading: '3.30 V', readings: '620', updated: '3h ago', public: false,
-  },
-]
-
-// Fake recent readings per channel
-const RECENT_READINGS: Record<string, { time: string; values: string[] }[]> = {
-  ch_001: [
-    { time: '14:32:01', values: ['23.4','68','412','1840'] },
-    { time: '14:31:01', values: ['23.3','69','408','1820'] },
-    { time: '14:30:01', values: ['23.1','70','401','1790'] },
-    { time: '14:29:01', values: ['23.0','71','396','1750'] },
-  ],
-  ch_002: [
-    { time: '14:32:08', values: ['41.2','6.8','24','18','210'] },
-    { time: '14:31:08', values: ['41.0','6.8','23','17','208'] },
-    { time: '14:30:08', values: ['40.8','6.9','23','17','205'] },
-  ],
-  ch_003: [
-    { time: '14:32:05', values: ['12','28','0.8','14','38','42'] },
-    { time: '14:31:05', values: ['11','27','0.7','13','37','40'] },
-    { time: '14:30:05', values: ['13','29','0.8','15','39','44'] },
-  ],
-  ch_004: [
-    { time: '14:30:22', values: ['18.2','7.2','8.4','2.1','380'] },
-    { time: '14:28:22', values: ['18.1','7.1','8.3','2.0','375'] },
-  ],
-  ch_005: [
-    { time: '11:14:00', values: ['3.30','120'] },
-    { time: '11:10:00', values: ['3.29','118'] },
-  ],
-}
 
 // ── Shared styles ────────────────────────────────────────────────────────────
 
@@ -148,7 +80,7 @@ const TYPE_OPTIONS = ['number', 'boolean', 'string'] as const
 function ViewChannelDrawer({ channel, onClose }: { channel: Channel | null; onClose(): void }) {
   useEscapeKey(onClose, channel != null)
   if (!channel) return null
-  const recent = RECENT_READINGS[channel.id] ?? []
+  const recent: { time: string; values: string[] }[] = []
 
   return (
     <>
@@ -785,7 +717,14 @@ export function ChannelsPage() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 160 }}>
             <div style={{ width: 24, height: 24, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
           </div>
-        ) : workspaces.length === 0 ? null : (
+        ) : workspaces.length === 0 ? null : channels.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 220, gap: 12, color: 'var(--muted)' }}>
+            <div style={{ fontSize: 40 }}>📡</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>No channels yet</div>
+            <div style={{ fontSize: 13 }}>Create a channel to start streaming data from your devices.</div>
+            <Btn variant="primary" size="sm" onClick={() => setCreateOpen(true)}>+ New Channel</Btn>
+          </div>
+        ) : (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
