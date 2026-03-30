@@ -4,6 +4,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,12 +16,24 @@ import (
 	"github.com/greenlab/shared/pkg/response"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 4096,
-	CheckOrigin: func(r *http.Request) bool {
-		return true // TODO: restrict in production
-	},
+// allowedOrigins returns the set of permitted WebSocket origins.
+// ALLOWED_ORIGINS is a comma-separated list of origins, e.g.
+// "https://app.example.com,https://dash.example.com".
+// When empty the service falls back to the FRONTEND_URL env var.
+// An explicit wildcard "*" re-enables allow-all (dev only).
+func allowedOrigins() map[string]struct{} {
+	raw := os.Getenv("ALLOWED_ORIGINS")
+	if raw == "" {
+		raw = os.Getenv("FRONTEND_URL")
+	}
+	set := make(map[string]struct{})
+	for _, o := range strings.Split(raw, ",") {
+		o = strings.TrimSpace(o)
+		if o != "" {
+			set[o] = struct{}{}
+		}
+	}
+	return set
 }
 
 // realtimeHub is the local interface the RealtimeHandler depends on.
@@ -31,13 +45,39 @@ type realtimeHub interface {
 
 // RealtimeHandler handles WebSocket and SSE connections.
 type RealtimeHandler struct {
-	hub    realtimeHub
-	logger *slog.Logger
+	hub      realtimeHub
+	logger   *slog.Logger
+	upgrader websocket.Upgrader
 }
 
 // NewRealtimeHandler creates a new RealtimeHandler.
+// allowedOrigins() is called once here so env-var parsing does not happen
+// on every WebSocket upgrade request.
 func NewRealtimeHandler(hub realtimeHub, logger *slog.Logger) *RealtimeHandler {
-	return &RealtimeHandler{hub: hub, logger: logger}
+	origins := allowedOrigins()
+	h := &RealtimeHandler{hub: hub, logger: logger}
+	h.upgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 4096,
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			// Same-origin requests (e.g. server-side clients) have no Origin header.
+			if origin == "" {
+				return true
+			}
+			// Wildcard allows all origins — acceptable in local dev when set explicitly.
+			if _, ok := origins["*"]; ok {
+				return true
+			}
+			// If no origins are configured, reject cross-origin connections by default.
+			if len(origins) == 0 {
+				return false
+			}
+			_, ok := origins[origin]
+			return ok
+		},
+	}
+	return h
 }
 
 // WebSocket godoc
@@ -59,7 +99,7 @@ func (h *RealtimeHandler) WebSocket(c *gin.Context) {
 
 	userID, _ := sharedMiddleware.GetUserID(c)
 
-	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		h.logger.Error("ws upgrade failed", "error", err)
 		return
