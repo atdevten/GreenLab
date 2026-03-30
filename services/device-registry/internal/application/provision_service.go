@@ -93,7 +93,7 @@ func (s *ProvisionService) Provision(ctx context.Context, in ProvisionInput) (*P
 	if err != nil {
 		return nil, fmt.Errorf("Provision.NewChannel: %w", err)
 	}
-	ch.DeviceID = &d.ID
+	ch.SetDevice(d.ID)
 
 	fields := make([]*field.Field, 0, len(in.Fields))
 	for i, fi := range in.Fields {
