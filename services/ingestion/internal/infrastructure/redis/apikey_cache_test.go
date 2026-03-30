@@ -168,6 +168,24 @@ func TestAPIKeyCache_Validate_RedisTransientError_ReturnsCacheMiss(t *testing.T)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestAPIKeyCache_Validate_CorruptVersionKey_ReturnsCacheMiss(t *testing.T) {
+	// If the version key contains non-numeric data, treat as cache miss
+	// (fail closed rather than silently serving a potentially stale entry).
+	client, mock := redismock.NewClientMock()
+	cache := NewAPIKeyCache(client)
+	ctx := context.Background()
+
+	deviceID := "dev-abc"
+	schema := makeSchema(deviceID)
+
+	mock.ExpectGet(cacheKey("key", "chan")).SetVal(string(encodedEntry(schema, 3)))
+	mock.ExpectGet(deviceVersionKey(deviceID)).SetVal("not-a-number")
+
+	_, err := cache.Validate(ctx, "key", "chan")
+	assert.ErrorIs(t, err, domain.ErrCacheMiss)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 // Verify the TTL constant is sensible (not accidentally zero).
 func TestAPIKeyCacheTTL(t *testing.T) {
 	assert.Equal(t, 10*time.Minute, apiKeyCacheTTL)

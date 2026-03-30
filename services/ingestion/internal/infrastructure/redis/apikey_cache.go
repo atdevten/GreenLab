@@ -75,7 +75,11 @@ func (c *APIKeyCache) Validate(ctx context.Context, apiKey, channelID string) (d
 	if err == nil {
 		// Version key exists — compare.
 		currentVersion, parseErr := strconv.ParseInt(currentVersionStr, 10, 64)
-		if parseErr == nil && currentVersion != entry.Version {
+		if parseErr != nil {
+			// Corrupted version key — fail closed to avoid serving a stale entry.
+			return domain.DeviceSchema{}, domain.ErrCacheMiss
+		}
+		if currentVersion != entry.Version {
 			// Stale entry: device API key was rotated or device was deleted.
 			return domain.DeviceSchema{}, domain.ErrCacheMiss
 		}
@@ -88,6 +92,11 @@ func (c *APIKeyCache) Validate(ctx context.Context, apiKey, channelID string) (d
 
 // Set stores an API key + channelID → DeviceSchema mapping together with
 // the current device version counter so stale checks work on future hits.
+//
+// Note: the version read and the cache write are two separate Redis operations,
+// so a concurrent IncrDeviceVersion (key rotation or delete) that lands between
+// them would result in a stale entry. The window is O(milliseconds) and the
+// entry TTL (10 min) self-heals, so the risk is accepted as negligible.
 func (c *APIKeyCache) Set(ctx context.Context, apiKey, channelID string, schema domain.DeviceSchema) error {
 	// Read the current version (0 if not yet set).
 	var version int64
