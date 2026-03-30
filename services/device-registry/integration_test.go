@@ -116,6 +116,21 @@ func startRedis(t *testing.T) *redis.Client {
 	return client
 }
 
+// noopDeviceCache is a DeviceCacheRepository that silently succeeds all operations.
+// Used in tests that exercise the HTTP/domain layer without needing a real Redis,
+// avoiding connection errors from a disconnected client.
+type noopDeviceCache struct{}
+
+func (n *noopDeviceCache) SetDevice(_ context.Context, _ *device.Device) error {
+	return nil
+}
+func (n *noopDeviceCache) GetDeviceByAPIKey(_ context.Context, _ string) (*device.Device, error) {
+	return nil, device.ErrCacheMiss
+}
+func (n *noopDeviceCache) DeleteDevice(_ context.Context, _, _ string) error {
+	return nil
+}
+
 // tenantMiddleware injects the given workspace ID as the tenant claim so handlers
 // can call sharedMiddleware.GetTenantID without a real JWT.
 func tenantMiddleware(workspaceID string) gin.HandlerFunc {
@@ -188,12 +203,10 @@ func TestCrossTenant_DeviceA_CannotReadDeviceB(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, wsA, fetched.WorkspaceID)
 
-	// Wire up services — use a no-op cache backed by a disconnected client so that
-	// cache errors are silently logged and never surface in this cross-tenant test.
-	noopCache := deviceredis.NewDeviceCache(redis.NewClient(&redis.Options{Addr: "localhost:0"}))
+	// Wire up services — use a no-op cache so tests stay free of Redis connection errors.
 	logger := slog.Default()
 
-	deviceSvc := application.NewDeviceService(deviceRepo, noopCache, logger)
+	deviceSvc := application.NewDeviceService(deviceRepo, &noopDeviceCache{}, logger)
 	channelSvc := application.NewChannelService(channelRepo)
 
 	deviceHandler := transporthttp.NewDeviceHandler(deviceSvc)
@@ -227,10 +240,9 @@ func TestCrossTenant_ChannelA_CannotBeReadByTenantB(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, wsA, fetched.WorkspaceID)
 
-	noopCache := deviceredis.NewDeviceCache(redis.NewClient(&redis.Options{Addr: "localhost:0"}))
 	logger := slog.Default()
 
-	deviceSvc := application.NewDeviceService(deviceRepo, noopCache, logger)
+	deviceSvc := application.NewDeviceService(deviceRepo, &noopDeviceCache{}, logger)
 	channelSvc := application.NewChannelService(channelRepo)
 
 	deviceHandler := transporthttp.NewDeviceHandler(deviceSvc)
