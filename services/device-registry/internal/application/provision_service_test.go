@@ -24,7 +24,11 @@ type mockTxRunner struct {
 
 func (m *mockTxRunner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx TxRepos) error) error {
 	args := m.Called(ctx, fn)
-	// If a custom fn executor is set via Run(), the mock framework handles it.
+	// Allow Return(func(ctx, fn) error) so tests can propagate fn's error naturally,
+	// making the "RunInTx returns whatever fn returns" contract explicit.
+	if f, ok := args.Get(0).(func(context.Context, func(context.Context, TxRepos) error) error); ok {
+		return f(ctx, fn)
+	}
 	return args.Error(0)
 }
 
@@ -160,13 +164,12 @@ func TestProvision_RollbackOnFieldCreateFailure(t *testing.T) {
 	chRepo.On("Create", ctx, mock.AnythingOfType("*channel.Channel")).Return(nil)
 	fRepo.On("Create", ctx, mock.AnythingOfType("*field.Field")).Return(fieldErr)
 
-	// TxRunner returns the error from fn; the real impl would roll back.
+	// Return a function so the mock propagates fn's error exactly as the real
+	// TxRunner would — making the "RunInTx returns whatever fn returns" contract explicit.
 	txRunner.On("RunInTx", ctx, mock.Anything).
-		Run(func(args mock.Arguments) {
-			fn := args.Get(1).(func(context.Context, TxRepos) error)
-			_ = fn(ctx, TxRepos{Devices: devRepo, Channels: chRepo, Fields: fRepo})
-		}).
-		Return(fieldErr)
+		Return(func(ctx context.Context, fn func(context.Context, TxRepos) error) error {
+			return fn(ctx, TxRepos{Devices: devRepo, Channels: chRepo, Fields: fRepo})
+		})
 
 	// Cache must NOT be called — provision failed.
 	result, err := svc.Provision(ctx, validProvisionInput())
