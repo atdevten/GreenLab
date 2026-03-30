@@ -115,12 +115,20 @@ func (c *DeviceCache) DeleteDevice(ctx context.Context, deviceID, apiKey string)
 	return nil
 }
 
+// deviceVersionTTL is the lifetime of a device_version key.
+// A long TTL lets Redis reclaim keys for permanently deleted devices
+// without affecting correctness — a missing key is treated as version 0 (fresh).
+const deviceVersionTTL = 24 * time.Hour
+
 // IncrDeviceVersion atomically increments the version counter at
 // "device_version:{deviceID}". Ingestion's cache compares this value
 // on every cache hit to detect stale cached entries.
 func (c *DeviceCache) IncrDeviceVersion(ctx context.Context, deviceID string) error {
 	key := fmt.Sprintf("device_version:%s", deviceID)
-	if err := c.client.Incr(ctx, key).Err(); err != nil {
+	pipe := c.client.Pipeline()
+	pipe.Incr(ctx, key)
+	pipe.Expire(ctx, key, deviceVersionTTL)
+	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("DeviceCache.IncrDeviceVersion: %w", err)
 	}
 	return nil
