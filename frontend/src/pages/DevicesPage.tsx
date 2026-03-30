@@ -37,21 +37,6 @@ interface Device {
   fields: Field[]
 }
 
-// ── Seed data ──────────────────────────────────────────────────────────────
-
-function fakeKey(seed: string) {
-  return `ts_${seed}e8b7d1a6f3c9d0e2b5a8c7f1d4e6b3a9`
-}
-
-const initial: Device[] = [
-  { icon: '🌡️', name: 'Greenhouse Sensor A', id: 'dev_4f2a91c3', status: 'Active',   channels: 4, reads: '42K', last: '12s ago', apiKey: fakeKey('4f2a91c3'), description: 'Main climate sensor for Greenhouse A',         tags: 'agriculture, climate, zone-a', workspace: 'GreenLab — Default Workspace', channelName: 'Greenhouse Climate',  visibility: 'private', fields: [{ name: 'Temperature', unit: '°C', type: 'float', key: 'temperature' }, { name: 'Humidity', unit: '%', type: 'float', key: 'humidity' }, { name: 'CO₂', unit: 'ppm', type: 'float', key: 'co2' }, { name: 'Light', unit: 'lux', type: 'float', key: 'light' }] },
-  { icon: '🌾', name: 'Farm Node B',          id: 'dev_7c3e22b1', status: 'Active',   channels: 3, reads: '38K', last: '8s ago',  apiKey: fakeKey('7c3e22b1'), description: 'Soil monitoring node for Farm Project',          tags: 'soil, farming',               workspace: 'GreenLab — Farm Project',         channelName: 'Farm Soil Data',      visibility: 'private', fields: [{ name: 'Moisture', unit: '%', type: 'float', key: 'moisture' }, { name: 'pH', unit: '', type: 'float', key: 'ph' }, { name: 'Nitrogen', unit: 'mg/L', type: 'float', key: 'nitrogen' }] },
-  { icon: '💧', name: 'Water Quality Probe',  id: 'dev_2a9f10d4', status: 'Warning',  channels: 5, reads: '19K', last: '2m ago',  apiKey: fakeKey('2a9f10d4'), description: 'Water quality probe — irrigation pond',          tags: 'water, quality',              workspace: 'GreenLab — Default Workspace', channelName: 'Pond Water Quality',  visibility: 'public',  fields: [{ name: 'pH', unit: '', type: 'float', key: 'ph' }, { name: 'Turbidity', unit: 'NTU', type: 'float', key: 'turbidity' }, { name: 'Dissolved O₂', unit: 'mg/L', type: 'float', key: 'dissolved_o2' }] },
-  { icon: '🌬️', name: 'Air Monitor',          id: 'dev_8b5c44e2', status: 'Active',   channels: 6, reads: '27K', last: '5s ago',  apiKey: fakeKey('8b5c44e2'), description: 'Air quality monitor for ventilation control',    tags: 'air, indoor',                 workspace: 'GreenLab — Default Workspace', channelName: 'Indoor Air Quality',  visibility: 'private', fields: [{ name: 'PM2.5', unit: 'μg/m³', type: 'float', key: 'pm2_5' }, { name: 'PM10', unit: 'μg/m³', type: 'float', key: 'pm10' }, { name: 'AQI', unit: '', type: 'integer', key: 'aqi' }] },
-  { icon: '🔬', name: 'R&D Lab Node',         id: 'dev_1d7a88f5', status: 'Inactive', channels: 2, reads: '620', last: '3h ago',  apiKey: fakeKey('1d7a88f5'), description: 'Experimental node in R&D lab',                   tags: 'lab, experimental',           workspace: 'GreenLab — R&D Lab',          channelName: 'Lab Readings',        visibility: 'private', fields: [{ name: 'field1', unit: '', type: 'float', key: 'field1' }, { name: 'field2', unit: '', type: 'float', key: 'field2' }] },
-  { icon: '☀️', name: 'Solar Tracker',        id: 'dev_9e2b55a3', status: 'Blocked',  channels: 2, reads: '0',   last: 'Never',   apiKey: fakeKey('9e2b55a3'), description: 'Solar panel orientation tracker',                tags: 'solar, energy',               workspace: 'GreenLab — Default Workspace', channelName: 'Solar Orientation',   visibility: 'private', fields: [{ name: 'Azimuth', unit: '°', type: 'float', key: 'azimuth' }, { name: 'Elevation', unit: '°', type: 'float', key: 'elevation' }] },
-]
-
 const statusColor: Record<string, 'green' | 'yellow' | 'red' | 'muted'> = {
   Active: 'green', Warning: 'yellow', Inactive: 'muted', Blocked: 'red',
 }
@@ -69,47 +54,23 @@ const CHART_OPTS = {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function genKey() {
-  const c = '0123456789abcdef'
-  return 'ts_' + Array.from({ length: 32 }, () => c[Math.floor(Math.random() * 16)]).join('')
-}
-
 function randSeries(base: number, len = 20) {
   return Array.from({ length: len }, () => +(base + (Math.random() - 0.5) * base * 0.15).toFixed(1))
 }
 
 const timeLabels = Array.from({ length: 20 }, (_, i) => `${i * 3}s`)
 
-const deviceFields: Record<string, { label: string; unit: string; base: number; color: string }[]> = {
-  'dev_4f2a91c3': [
-    { label: 'Temperature', unit: '°C',  base: 72, color: '#ef4444' },
-    { label: 'Humidity',    unit: '%',   base: 63, color: '#06b6d4' },
-    { label: 'CO₂',        unit: 'ppm', base: 410, color: '#a855f7' },
-    { label: 'Light',       unit: 'lux', base: 8400, color: '#f59e0b' },
-  ],
-  'dev_7c3e22b1': [
-    { label: 'Moisture',  unit: '%',    base: 42,  color: '#22c55e' },
-    { label: 'pH',        unit: '',     base: 6.8, color: '#3b82f6' },
-    { label: 'Nitrogen',  unit: 'mg/L', base: 24,  color: '#f59e0b' },
-  ],
-  'dev_2a9f10d4': [
-    { label: 'pH',         unit: '',      base: 7.1, color: '#3b82f6' },
-    { label: 'Turbidity',  unit: 'NTU',   base: 4.2, color: '#f59e0b' },
-    { label: 'Dissolved O₂', unit: 'mg/L',base: 8.4, color: '#22c55e' },
-  ],
-  'dev_8b5c44e2': [
-    { label: 'PM2.5', unit: 'μg/m³', base: 12,  color: '#ef4444' },
-    { label: 'PM10',  unit: 'μg/m³', base: 22,  color: '#f59e0b' },
-    { label: 'AQI',   unit: '',      base: 48,  color: '#a855f7' },
-  ],
-}
-
 // ── View Data Drawer ───────────────────────────────────────────────────────
 
 function ViewDataDrawer({ device, onClose }: { device: Device | null; onClose(): void }) {
   useEscapeKey(onClose, device != null)
   if (!device) return null
-  const fields = deviceFields[device.id] ?? [{ label: 'field1', unit: '', base: 50, color: '#3b82f6' }]
+  const fields = device.fields.map((f, i) => ({
+    label: f.name || f.key,
+    unit: f.unit,
+    base: 50,
+    color: ['#ef4444', '#06b6d4', '#a855f7', '#f59e0b', '#22c55e', '#3b82f6', '#f97316', '#a78bfa'][i % 8],
+  }))
 
   return (
     <>
@@ -753,16 +714,8 @@ export function DevicesPage() {
       toast(`Device "${nd.name}" registered`)
       return { channelId, apiKey }
     } catch {
-      const fallbackChannelId = crypto.randomUUID()
-      setDevices(prev => [{
-        icon: nd.icon, name: nd.name, id: nd.id,
-        status: 'Active', channels: 1, reads: '0', last: 'just now',
-        apiKey: nd.apiKey, description: nd.description, tags: nd.tags,
-        workspace: nd.workspace, channelName: nd.channelName,
-        visibility: nd.visibility, fields: nd.fields,
-      }, ...prev])
-      toast(`Device "${nd.name}" registered`)
-      return { channelId: fallbackChannelId, apiKey: nd.apiKey }
+      toast('Failed to register device', 'error')
+      throw new Error('registration failed')
     }
   }
 
@@ -809,10 +762,7 @@ export function DevicesPage() {
         setDevices(prev => prev.map(x => x.id === id ? { ...x, apiKey: r.data.api_key } : x))
         if (d) toast(`API key rotated for "${d.name}"`, 'info')
       })
-      .catch(() => {
-        setDevices(prev => prev.map(x => x.id === id ? { ...x, apiKey: genKey() } : x))
-        if (d) toast(`API key rotated for "${d.name}"`, 'info')
-      })
+      .catch(() => toast('Failed to rotate API key', 'error'))
   }
 
   const q = search.toLowerCase()
@@ -869,8 +819,18 @@ export function DevicesPage() {
         </div>
       )}
 
+      {/* Empty state */}
+      {!loading && workspaces.length > 0 && devices.length === 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 280, gap: 16, color: 'var(--muted)' }}>
+          <div style={{ fontSize: 44 }}>🔌</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>No devices yet</div>
+          <div style={{ fontSize: 13 }}>Register your first IoT device to start collecting data.</div>
+          <Btn variant="primary" size="sm" onClick={() => setRegisterOpen(true)}>+ Register Device</Btn>
+        </div>
+      )}
+
       {/* Grid */}
-      {!loading && workspaces.length > 0 && <div className="rg3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+      {!loading && workspaces.length > 0 && devices.length > 0 && <div className="rg3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
         {visible.map(d => (
           <DeviceCard
             key={d.id}
