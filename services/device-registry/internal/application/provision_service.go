@@ -95,6 +95,7 @@ func (s *ProvisionService) Provision(ctx context.Context, in ProvisionInput) (*P
 	}
 	ch.SetDevice(d.ID)
 
+	// Fields are optional; a device+channel can be provisioned without any fields.
 	fields := make([]*field.Field, 0, len(in.Fields))
 	for i, fi := range in.Fields {
 		f, err := field.NewField(ch.ID, fi.Name, fi.Label, fi.Unit, field.FieldType(fi.FieldType), fi.Position)
