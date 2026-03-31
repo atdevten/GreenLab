@@ -206,7 +206,7 @@ services/normalization/
 
 ## 5. query-realtime
 
-**Purpose:** Serves historical time-series queries from InfluxDB and pushes live telemetry to connected clients via WebSocket and SSE. Supports CSV export. Consumes `telemetry.readings` from Kafka to drive the realtime hub.
+**Purpose:** Serves historical time-series queries from InfluxDB and pushes live telemetry to connected clients via WebSocket and SSE. Supports CSV export. Consumes `normalized.sensor` from Kafka to drive the realtime hub.
 
 **Port:** `8004` · **Sub-domains:** `query` (historical) · `realtime` (WebSocket/SSE hub)
 
@@ -229,7 +229,7 @@ services/query-realtime/
     │   └── realtime/       # Hub subscription model
     ├── infrastructure/
     │   ├── influxdb/       # Reader
-    │   ├── kafka/          # ReadingConsumer (telemetry.readings)
+    │   ├── kafka/          # ReadingConsumer (normalized.sensor)
     │   └── redis/          # Query result cache
     └── transport/http/     # QueryHandler (CSV branch on ?format=csv), RealtimeHandler, Router
 ```
@@ -240,7 +240,7 @@ services/query-realtime/
 | --- | --- | --- |
 | DB | InfluxDB | Historical time-series reads |
 | Cache | Redis | Query result caching |
-| Kafka | `telemetry.readings` (consume, group: `query-realtime-group`) | Feed realtime hub |
+| Kafka | `normalized.sensor` (consume, group: `query-realtime-group`) | Feed realtime hub |
 
 **Environment Variables**
 
@@ -296,7 +296,7 @@ services/alert-notification/
 | Type | Resource | Usage |
 | --- | --- | --- |
 | DB | PostgreSQL | Alert rules, notifications |
-| Kafka | `telemetry.readings` (consume, group: `alert-notification-telemetry-group`) | Evaluate rules |
+| Kafka | `normalized.sensor` (consume, group: `alert-notification-telemetry-group`) | Evaluate rules |
 | Kafka | `alert.events` (produce) | Publish triggered alerts |
 | Kafka | `alert.events` (consume, group: `alert-notification-alert-group`) | Dispatch notifications |
 | External | SMTP server | Email delivery |

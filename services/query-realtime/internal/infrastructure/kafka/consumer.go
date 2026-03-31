@@ -10,7 +10,7 @@ import (
 	"github.com/greenlab/query-realtime/internal/domain/realtime"
 )
 
-const topicReadings = "telemetry.readings"
+const topicReadings = "normalized.sensor"
 
 // Broadcaster is the interface for broadcasting push messages to subscribers.
 type Broadcaster interface {

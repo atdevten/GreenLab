@@ -26,3 +26,5 @@ build/
 .DS_Store
 .gstack/
 coverage/
+.claude/agents/go-backend-implementer.md
+scripts/scripts

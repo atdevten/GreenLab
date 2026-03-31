@@ -142,6 +142,7 @@ services:
       INFLUXDB_TOKEN: "my-super-secret-token"
       INFLUXDB_ORG: "greenlab"
       INFLUXDB_BUCKET: "telemetry"
+      DEVICE_REGISTRY_URL: "http://device-registry:8002"
       REDIS_ADDR: "redis:6379"
       KAFKA_BROKERS: "kafka:9092"
     healthcheck:
