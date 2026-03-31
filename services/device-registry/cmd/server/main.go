@@ -75,6 +75,10 @@ func main() {
 	fieldRepo := infraPostgres.NewFieldRepo(db)
 	fieldSvc := application.NewFieldService(fieldRepo)
 
+	// Provision dependencies (atomic device + channel + fields)
+	txRunner := infraPostgres.NewTxRunner(db)
+	provisionSvc := application.NewProvisionService(txRunner, deviceCache, slog.Default())
+
 	// Internal (machine-to-machine) dependencies
 	internalRepo := infraPostgres.NewInternalRepo(db)
 	internalSvc := application.NewInternalService(internalRepo)
@@ -84,7 +88,8 @@ func main() {
 	channelHandler := registryHTTP.NewChannelHandler(channelSvc)
 	fieldHandler := registryHTTP.NewFieldHandler(fieldSvc)
 	internalHandler := registryHTTP.NewInternalHandler(internalSvc)
-	router := registryHTTP.NewRouter(deviceHandler, channelHandler, fieldHandler, internalHandler, publicKey)
+	provisionHandler := registryHTTP.NewProvisionHandler(provisionSvc)
+	router := registryHTTP.NewRouter(deviceHandler, channelHandler, fieldHandler, internalHandler, provisionHandler, publicKey)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.HTTP.Port,

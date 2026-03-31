@@ -28,6 +28,14 @@ type Channel struct {
 	UpdatedAt   time.Time
 }
 
+// SetDevice links a device to this channel.
+// Use this instead of direct field assignment so any future guard on DeviceID
+// has a single place to enforce it.
+func (ch *Channel) SetDevice(deviceID uuid.UUID) {
+	ch.DeviceID = &deviceID
+	ch.UpdatedAt = time.Now().UTC()
+}
+
 // SetName validates and sets the channel name.
 func (ch *Channel) SetName(name string) error {
 	if strings.TrimSpace(name) == "" {

@@ -5,6 +5,39 @@ import (
 	"time"
 )
 
+// Provision DTOs
+type ProvisionDeviceRequest struct {
+	WorkspaceID string `json:"workspace_id" validate:"required"`
+	Name        string `json:"name"         validate:"required"`
+	Description string `json:"description"`
+}
+
+type ProvisionChannelRequest struct {
+	Name        string `json:"name"       validate:"required"`
+	Description string `json:"description"`
+	Visibility  string `json:"visibility"`
+}
+
+type ProvisionFieldRequest struct {
+	Name      string `json:"name"       validate:"required"`
+	Label     string `json:"label"`
+	Unit      string `json:"unit"`
+	FieldType string `json:"field_type"`
+	Position  int    `json:"position"   validate:"required"`
+}
+
+type ProvisionRequest struct {
+	Device  ProvisionDeviceRequest  `json:"device"   validate:"required"`
+	Channel ProvisionChannelRequest `json:"channel"  validate:"required"`
+	Fields  []ProvisionFieldRequest `json:"fields"`
+}
+
+type ProvisionResponse struct {
+	Device  *DeviceResponse   `json:"device"`
+	Channel *ChannelResponse  `json:"channel"`
+	Fields  []*FieldResponse  `json:"fields"`
+}
+
 // Device DTOs
 type CreateDeviceRequest struct {
 	WorkspaceID string `json:"workspace_id" validate:"required"`

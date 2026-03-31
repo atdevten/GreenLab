@@ -19,7 +19,7 @@ func securityHeaders() gin.HandlerFunc {
 	}
 }
 
-func NewRouter(deviceH *DeviceHandler, channelH *ChannelHandler, fieldH *FieldHandler, internalH *InternalHandler, publicKey *rsa.PublicKey) *gin.Engine {
+func NewRouter(deviceH *DeviceHandler, channelH *ChannelHandler, fieldH *FieldHandler, internalH *InternalHandler, provisionH *ProvisionHandler, publicKey *rsa.PublicKey) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(sharedMiddleware.RequestID())
@@ -32,6 +32,7 @@ func NewRouter(deviceH *DeviceHandler, channelH *ChannelHandler, fieldH *FieldHa
 	{
 		devices := v1.Group("/devices")
 		{
+			devices.POST("/provision", provisionH.Provision)
 			devices.POST("", deviceH.CreateDevice)
 			devices.GET("", deviceH.ListDevices)
 			devices.GET("/:id", deviceH.GetDevice)
