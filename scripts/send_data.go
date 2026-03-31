@@ -6,7 +6,7 @@
 //	go run scripts/send_data.go \
 //	  --url  http://localhost:9080 \
 //	  --channel d957bb9f-ebc4-4eec-bb69-086f2e925bbc \
-//	  --api-key ts_18503a98b5dd021db6c8792924fe0c657eb6b1612688f408a3dfbf113ba1d999 \
+//	  --api-key <your-api-key> \
 //	  --interval 5s \
 //	  --count 0        # 0 = run forever
 
@@ -109,7 +109,10 @@ func sendReading(client *http.Client, baseURL, channelID, apiKey string, state *
 		return fmt.Errorf("send: %w", err)
 	}
 	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		log.Printf("warn: read response body: %v", readErr)
+	}
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("server returned %d: %s", resp.StatusCode, respBody)
