@@ -13,6 +13,7 @@ import { useEscapeKey } from '../hooks/useEscapeKey'
 import { devicesApi } from '../api/devices'
 import { channelsApi } from '../api/channels'
 import { fieldsApi } from '../api/fields'
+import { queryApi } from '../api/query'
 import { workspacesApi } from '../api/workspaces'
 import type { Device as ApiDevice, Workspace } from '../types'
 
@@ -52,25 +53,73 @@ const CHART_OPTS = {
   },
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-function randSeries(base: number, len = 20) {
-  return Array.from({ length: len }, () => +(base + (Math.random() - 0.5) * base * 0.15).toFixed(1))
-}
-
-const timeLabels = Array.from({ length: 20 }, (_, i) => `${i * 3}s`)
-
 // ── View Data Drawer ───────────────────────────────────────────────────────
+
+const FIELD_COLORS = ['#ef4444', '#06b6d4', '#a855f7', '#f59e0b', '#22c55e', '#3b82f6', '#f97316', '#a78bfa']
 
 function ViewDataDrawer({ device, onClose }: { device: Device | null; onClose(): void }) {
   useEscapeKey(onClose, device != null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(false)
+  const [fields, setFields] = useState<{ key: string; label: string; unit: string }[]>([])
+  const [latestMap, setLatestMap] = useState<Record<string, number | string | null>>({})
+  const [chartMap, setChartMap] = useState<Record<string, { labels: string[]; values: (number | null)[] }>>({})
+
+  useEffect(() => {
+    if (!device) return
+    let cancelled = false
+    setLoading(true)
+    setError(false)
+    setFields([])
+    setLatestMap({})
+    setChartMap({})
+
+    channelsApi.list({ device_id: device.id })
+      .then(async r => {
+        if (cancelled) return
+        const chs = r.data
+        if (!chs.length) return
+        const ch = chs[0]
+
+        const fieldsRes = await fieldsApi.list(ch.id)
+        if (cancelled) return
+        // Backend: name = field key, label = display name
+        const chFields = fieldsRes.data.map((f: any) => ({
+          key: f.name,
+          label: f.label || f.name,
+          unit: f.unit ?? '',
+        }))
+        setFields(chFields)
+
+        await Promise.all(chFields.map(async f => {
+          const [latestRes, queryRes] = await Promise.allSettled([
+            queryApi.latest({ channel_id: ch.id, field: f.key } as any),
+            queryApi.query({ channel_id: ch.id, field: f.key, limit: 20 } as any),
+          ])
+          if (cancelled) return
+          if (latestRes.status === 'fulfilled') {
+            const val = (latestRes.value as any).data?.value ?? null
+            setLatestMap(prev => ({ ...prev, [f.key]: val }))
+          }
+          if (queryRes.status === 'fulfilled') {
+            const pts: { timestamp: string; value: number }[] = (queryRes.value as any).data?.data ?? []
+            setChartMap(prev => ({
+              ...prev,
+              [f.key]: {
+                labels: pts.map(p => new Date(p.timestamp).toLocaleTimeString()),
+                values: pts.map(p => p.value),
+              },
+            }))
+          }
+        }))
+      })
+      .catch(() => { if (!cancelled) setError(true) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+
+    return () => { cancelled = true }
+  }, [device?.id])
+
   if (!device) return null
-  const fields = device.fields.map((f, i) => ({
-    label: f.name || f.key,
-    unit: f.unit,
-    base: 50,
-    color: ['#ef4444', '#06b6d4', '#a855f7', '#f59e0b', '#22c55e', '#3b82f6', '#f97316', '#a78bfa'][i % 8],
-  }))
 
   return (
     <>
@@ -109,32 +158,64 @@ function ViewDataDrawer({ device, onClose }: { device: Device | null; onClose():
             ))}
           </div>
 
+          {/* Loading */}
+          {loading && (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 13 }}>
+              Loading data…
+            </div>
+          )}
+
+          {/* Error */}
+          {!loading && error && (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 13 }}>
+              Failed to load data. Please try again.
+            </div>
+          )}
+
+          {/* No fields */}
+          {!loading && !error && fields.length === 0 && (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 13 }}>
+              No fields configured for this device.
+            </div>
+          )}
+
           {/* Charts */}
-          {fields.map(f => (
-            <Card key={f.label} style={{ marginBottom: 14 }}>
-              <CardTitle>
-                {f.label}
-                {f.unit && <span style={{ color: 'var(--muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> ({f.unit})</span>}
-                <span style={{ marginLeft: 'auto', fontSize: 18, fontWeight: 700, color: f.color, textTransform: 'none', letterSpacing: 0 }}>
-                  {randSeries(f.base, 1)[0]}{f.unit}
-                </span>
-              </CardTitle>
-              <div style={{ position: 'relative', height: 120 }}>
-                <Line
-                  data={{
-                    labels: timeLabels,
-                    datasets: [{
-                      data: randSeries(f.base),
-                      borderColor: f.color,
-                      backgroundColor: f.color + '18',
-                      fill: true, tension: 0.4, pointRadius: 2,
-                    }],
-                  }}
-                  options={CHART_OPTS as any}
-                />
-              </div>
-            </Card>
-          ))}
+          {!loading && !error && fields.map((f, i) => {
+            const color = FIELD_COLORS[i % FIELD_COLORS.length]
+            const latest = latestMap[f.key]
+            const chart = chartMap[f.key]
+            return (
+              <Card key={f.key} style={{ marginBottom: 14 }}>
+                <CardTitle>
+                  {f.label}
+                  {f.unit && <span style={{ color: 'var(--muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> ({f.unit})</span>}
+                  <span style={{ marginLeft: 'auto', fontSize: 18, fontWeight: 700, color, textTransform: 'none', letterSpacing: 0 }}>
+                    {latest != null ? `${latest}${f.unit ?? ''}` : '—'}
+                  </span>
+                </CardTitle>
+                <div style={{ position: 'relative', height: 120 }}>
+                  {chart && chart.values.length > 0 ? (
+                    <Line
+                      data={{
+                        labels: chart.labels,
+                        datasets: [{
+                          data: chart.values,
+                          borderColor: color,
+                          backgroundColor: color + '18',
+                          fill: true, tension: 0.4, pointRadius: 2,
+                        }],
+                      }}
+                      options={CHART_OPTS as any}
+                    />
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--muted)', fontSize: 12 }}>
+                      No data
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )
+          })}
         </div>
       </div>
     </>
@@ -620,7 +701,8 @@ function DeviceCard({
 
 function apiDeviceToLocal(d: ApiDevice): Device {
   const statusMap: Record<string, Device['status']> = { active: 'Active', inactive: 'Inactive', blocked: 'Blocked' }
-  const reads = d.reads_24h >= 1000 ? `${(d.reads_24h / 1000).toFixed(0)}K` : String(d.reads_24h)
+  const reads24 = d.reads_24h ?? 0
+  const reads = reads24 >= 1000 ? `${(reads24 / 1000).toFixed(0)}K` : String(reads24)
   const last = d.last_seen ? new Date(d.last_seen).toLocaleTimeString() : 'Never'
   return {
     icon: d.icon ?? '🔌',
