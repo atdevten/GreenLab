@@ -9,5 +9,4 @@ use (
 	./services/query-realtime
 	./services/supporting
 	./shared
-	./scripts
 )

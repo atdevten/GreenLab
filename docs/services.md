@@ -296,7 +296,7 @@ services/alert-notification/
 | Type | Resource | Usage |
 | --- | --- | --- |
 | DB | PostgreSQL | Alert rules, notifications |
-| Kafka | `telemetry.readings` (consume, group: `alert-notification-telemetry-group`) | Evaluate rules |
+| Kafka | `normalized.sensor` (consume, group: `alert-notification-telemetry-group`) | Evaluate rules |
 | Kafka | `alert.events` (produce) | Publish triggered alerts |
 | Kafka | `alert.events` (consume, group: `alert-notification-alert-group`) | Dispatch notifications |
 | External | SMTP server | Email delivery |

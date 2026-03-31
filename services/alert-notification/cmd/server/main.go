@@ -106,7 +106,7 @@ func main() {
 
 	go engine.StartRuleRefresh(ctx, cfg.RuleEngine.RefreshInterval)
 
-	// Start telemetry consumer (telemetry.readings → rule engine)
+	// Start telemetry consumer (normalized.sensor → rule engine)
 	telemetryConsumer := infraKafka.NewTelemetryConsumer(cfg.Kafka.Brokers, cfg.Kafka.TelemetryGroupID, engine, slog.Default())
 	defer func() {
 		if err := telemetryConsumer.Close(); err != nil {

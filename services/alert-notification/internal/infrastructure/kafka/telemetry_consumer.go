@@ -27,7 +27,7 @@ type TelemetryConsumer struct {
 func NewTelemetryConsumer(brokers []string, groupID string, engine Evaluator, log *slog.Logger) *TelemetryConsumer {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     brokers,
-		Topic:       "telemetry.readings",
+		Topic:       "normalized.sensor",
 		GroupID:     groupID,
 		MinBytes:    1,
 		MaxBytes:    10e6,
@@ -54,7 +54,7 @@ type telemetryReadingEnvelope struct {
 
 // Start begins consuming messages until ctx is cancelled.
 func (c *TelemetryConsumer) Start(ctx context.Context) error {
-	c.log.Info("alert telemetry kafka consumer started")
+	c.log.Info("alert telemetry kafka consumer started", "topic", "normalized.sensor")
 	for {
 		select {
 		case <-ctx.Done():
