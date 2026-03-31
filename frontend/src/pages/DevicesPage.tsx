@@ -60,6 +60,7 @@ const FIELD_COLORS = ['#ef4444', '#06b6d4', '#a855f7', '#f59e0b', '#22c55e', '#3
 function ViewDataDrawer({ device, onClose }: { device: Device | null; onClose(): void }) {
   useEscapeKey(onClose, device != null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(false)
   const [fields, setFields] = useState<{ key: string; label: string; unit: string }[]>([])
   const [latestMap, setLatestMap] = useState<Record<string, number | string | null>>({})
   const [chartMap, setChartMap] = useState<Record<string, { labels: string[]; values: (number | null)[] }>>({})
@@ -68,6 +69,7 @@ function ViewDataDrawer({ device, onClose }: { device: Device | null; onClose():
     if (!device) return
     let cancelled = false
     setLoading(true)
+    setError(false)
     setFields([])
     setLatestMap({})
     setChartMap({})
@@ -111,7 +113,7 @@ function ViewDataDrawer({ device, onClose }: { device: Device | null; onClose():
           }
         }))
       })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) setError(true) })
       .finally(() => { if (!cancelled) setLoading(false) })
 
     return () => { cancelled = true }
@@ -163,15 +165,22 @@ function ViewDataDrawer({ device, onClose }: { device: Device | null; onClose():
             </div>
           )}
 
+          {/* Error */}
+          {!loading && error && (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 13 }}>
+              Failed to load data. Please try again.
+            </div>
+          )}
+
           {/* No fields */}
-          {!loading && fields.length === 0 && (
+          {!loading && !error && fields.length === 0 && (
             <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 13 }}>
               No fields configured for this device.
             </div>
           )}
 
           {/* Charts */}
-          {!loading && fields.map((f, i) => {
+          {!loading && !error && fields.map((f, i) => {
             const color = FIELD_COLORS[i % FIELD_COLORS.length]
             const latest = latestMap[f.key]
             const chart = chartMap[f.key]
