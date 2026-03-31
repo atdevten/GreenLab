@@ -392,3 +392,12 @@ These decisions should not be revisited without explicit discussion:
 | Replay rate limiting | 100 readings/min per device via Redis sliding window | Prevents burst from reconnecting Tier 1 devices saturating Kafka | 2026-03-21 |
 | Deserializer interface | Shared steps 1/3/4/5; only raw byte parsing differs per format | DRY; forces all compact formats to produce canonical IngestInput | 2026-03-21 |
 | Field Position vs Index | Keep Position (display order 1-8), add Index uint8 (compact key 1-255) | Plan assumed 1-255 range; domain enforced 1-8; resolved by adding separate field | 2026-03-21 |
+
+---
+
+## Frontend — from PR #38 review
+
+### [TODO-039] Fix QueryParams field_key vs field param name mismatch
+**What:** `frontend/src/types/index.ts` defines `QueryParams.field_key` but the backend query-realtime service reads `c.Query("field")` (see `services/query-realtime/internal/transport/http/dto.go` — `FieldName string \`form:"field"\``). The `queryApi.query()` and `queryApi.latest()` calls in `QueryPage.tsx` and `ViewDataDrawer` send `field_key` which the backend ignores, meaning field-scoped queries return all fields instead of filtering. The `as any` casts in `ViewDataDrawer` work around the type but don't fix the underlying mismatch.
+**How to fix:** Rename `field_key` → `field` in `QueryParams` (types/index.ts), update `queryApi.latest` signature, and update all call sites (`QueryPage.tsx`, `ViewDataDrawer`).
+**Effort:** S | **Priority:** P2 | **Depends on:** Nothing
