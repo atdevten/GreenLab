@@ -26,6 +26,18 @@ type Channel struct {
 	Tags        []byte // JSONB string array
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	DeletedAt   *time.Time
+}
+
+// SoftDelete marks the channel as deleted.
+func (ch *Channel) SoftDelete() error {
+	if ch.DeletedAt != nil {
+		return ErrChannelNotFound
+	}
+	now := time.Now().UTC()
+	ch.DeletedAt = &now
+	ch.UpdatedAt = now
+	return nil
 }
 
 // SetDevice links a device to this channel.

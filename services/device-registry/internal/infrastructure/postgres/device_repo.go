@@ -135,7 +135,13 @@ func (r *DeviceRepo) Update(ctx context.Context, d *device.Device) error {
 }
 
 func (r *DeviceRepo) Delete(ctx context.Context, id uuid.UUID) error {
-	res, err := r.db.ExecContext(ctx,
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("DeviceRepo.Delete: begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	res, err := tx.ExecContext(ctx,
 		`UPDATE devices SET deleted_at=NOW(), updated_at=NOW() WHERE id=$1 AND deleted_at IS NULL`, id)
 	if err != nil {
 		return fmt.Errorf("DeviceRepo.Delete: %w", err)
@@ -144,5 +150,12 @@ func (r *DeviceRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	if n == 0 {
 		return fmt.Errorf("DeviceRepo.Delete: %w", device.ErrDeviceNotFound)
 	}
-	return nil
+
+	_, err = tx.ExecContext(ctx,
+		`UPDATE channels SET deleted_at=NOW(), updated_at=NOW() WHERE device_id=$1 AND deleted_at IS NULL`, id)
+	if err != nil {
+		return fmt.Errorf("DeviceRepo.Delete: cascade channels: %w", err)
+	}
+
+	return tx.Commit()
 }
