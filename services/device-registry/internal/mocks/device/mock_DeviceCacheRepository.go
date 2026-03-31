@@ -176,6 +176,53 @@ func (_c *MockDeviceCacheRepository_SetDevice_Call) RunAndReturn(run func(contex
 	return _c
 }
 
+// IncrDeviceVersion provides a mock function with given fields: ctx, deviceID
+func (_m *MockDeviceCacheRepository) IncrDeviceVersion(ctx context.Context, deviceID string) error {
+	ret := _m.Called(ctx, deviceID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IncrDeviceVersion")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, deviceID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockDeviceCacheRepository_IncrDeviceVersion_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IncrDeviceVersion'
+type MockDeviceCacheRepository_IncrDeviceVersion_Call struct {
+	*mock.Call
+}
+
+// IncrDeviceVersion is a helper method to define mock.On call
+//   - ctx context.Context
+//   - deviceID string
+func (_e *MockDeviceCacheRepository_Expecter) IncrDeviceVersion(ctx interface{}, deviceID interface{}) *MockDeviceCacheRepository_IncrDeviceVersion_Call {
+	return &MockDeviceCacheRepository_IncrDeviceVersion_Call{Call: _e.mock.On("IncrDeviceVersion", ctx, deviceID)}
+}
+
+func (_c *MockDeviceCacheRepository_IncrDeviceVersion_Call) Run(run func(ctx context.Context, deviceID string)) *MockDeviceCacheRepository_IncrDeviceVersion_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *MockDeviceCacheRepository_IncrDeviceVersion_Call) Return(_a0 error) *MockDeviceCacheRepository_IncrDeviceVersion_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockDeviceCacheRepository_IncrDeviceVersion_Call) RunAndReturn(run func(context.Context, string) error) *MockDeviceCacheRepository_IncrDeviceVersion_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewMockDeviceCacheRepository creates a new instance of MockDeviceCacheRepository. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewMockDeviceCacheRepository(t interface {
