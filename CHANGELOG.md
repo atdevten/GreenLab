@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.2.1] - 2026-04-01
+
+### Fixed
+
+- **Dashboard**: device and channel lists are now scoped to the active workspace — previously fetched all records across all workspaces, causing data leakage between orgs
+
 ## [0.0.2.0] - 2026-04-01
 
 ### Changed
