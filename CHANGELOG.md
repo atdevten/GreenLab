@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.2.0] - 2026-04-01
+
+### Changed
+
+- **Ingestion API**: `POST /v1/channels/{id}/data` and bulk variant now return `channel_id` and `request_id` in the 201 response, enabling device firmware to correlate server-side logs without guesswork
+
 ## [0.0.1.0] - 2026-04-01
 
 ### Fixed

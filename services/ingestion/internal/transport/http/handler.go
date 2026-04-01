@@ -13,6 +13,7 @@ import (
 	"github.com/greenlab/ingestion/internal/application"
 	"github.com/greenlab/ingestion/internal/domain"
 	"github.com/greenlab/shared/pkg/apierr"
+	"github.com/greenlab/shared/pkg/middleware"
 	"github.com/greenlab/shared/pkg/response"
 	"github.com/greenlab/shared/pkg/validator"
 )
@@ -119,7 +120,12 @@ func (h *Handler) ingestJSON(c *gin.Context, channelID, deviceID string) {
 		return
 	}
 
-	response.Created(c, IngestResponse{Accepted: 1, WrittenAt: time.Now().UTC()})
+	response.Created(c, IngestResponse{
+		Accepted:  1,
+		WrittenAt: time.Now().UTC(),
+		ChannelID: channelID,
+		RequestID: middleware.GetRequestID(c),
+	})
 }
 
 func (h *Handler) ingestCompact(c *gin.Context, channelID string, schema domain.DeviceSchema, d Deserializer, maxBody int64) {
@@ -149,7 +155,12 @@ func (h *Handler) ingestCompact(c *gin.Context, channelID string, schema domain.
 		return
 	}
 
-	response.Created(c, IngestResponse{Accepted: len(inputs), WrittenAt: time.Now().UTC()})
+	response.Created(c, IngestResponse{
+		Accepted:  len(inputs),
+		WrittenAt: time.Now().UTC(),
+		ChannelID: channelID,
+		RequestID: middleware.GetRequestID(c),
+	})
 }
 
 // BulkIngest godoc
@@ -207,7 +218,12 @@ func (h *Handler) BulkIngest(c *gin.Context) {
 		return
 	}
 
-	response.Created(c, IngestResponse{Accepted: len(req.Readings), WrittenAt: time.Now().UTC()})
+	response.Created(c, IngestResponse{
+		Accepted:  len(req.Readings),
+		WrittenAt: time.Now().UTC(),
+		ChannelID: channelID,
+		RequestID: middleware.GetRequestID(c),
+	})
 }
 
 // errorToHTTPResponse maps domain errors to appropriate HTTP responses.
