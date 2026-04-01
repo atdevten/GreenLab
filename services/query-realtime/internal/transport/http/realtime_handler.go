@@ -1,11 +1,13 @@
 package http
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -80,23 +82,23 @@ func NewRealtimeHandler(hub realtimeHub, logger *slog.Logger) *RealtimeHandler {
 	return h
 }
 
+// wsCommand is a client-to-server control message.
+type wsCommand struct {
+	Action    string `json:"action"`     // "subscribe" | "unsubscribe"
+	ChannelID string `json:"channel_id"` // target channel
+}
+
 // WebSocket godoc
-// @Summary      Subscribe to real-time readings via WebSocket
+// @Summary      Subscribe to real-time readings via WebSocket (multiplexed)
 // @Tags         realtime
 // @Produce      json
-// @Param        channel_id  query  string  true  "Channel ID to subscribe to"
+// @Param        channel_id  query  string  false  "Channel ID (legacy: auto-subscribes on connect)"
 // @Success      101  "Switching Protocols — upgrades to WebSocket connection"
 // @Failure      400  {object}  map[string]interface{}
 // @Failure      401  {object}  map[string]interface{}
 // @Security     BearerAuth
 // @Router       /api/v1/ws [get]
 func (h *RealtimeHandler) WebSocket(c *gin.Context) {
-	channelID := c.Query("channel_id")
-	if channelID == "" {
-		response.Error(c, apierr.BadRequest("channel_id is required"))
-		return
-	}
-
 	userID, _ := sharedMiddleware.GetUserID(c)
 
 	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -105,20 +107,65 @@ func (h *RealtimeHandler) WebSocket(c *gin.Context) {
 		return
 	}
 
-	sub := realtime.NewSubscription(channelID, userID)
-	h.hub.Subscribe(sub)
-	defer func() {
-		h.hub.Unsubscribe(sub)
-		sub.Close() // signal write pump to exit and drain the channel
-		conn.Close()
-	}()
+	// connSend is the single outbound channel for this connection.
+	connSend := make(chan []byte, 512)
 
-	// Write pump: exits on context cancellation (request gone), channel close
-	// (subscription closed by defer), or a write error.
-	// Capturing the context here prevents the goroutine from leaking after the
-	// handler returns — previously, with no context.Done case, the goroutine
-	// would block on <-sub.Send indefinitely.
+	// subs holds per-channel subscriptions for this connection.
+	var (
+		subsMu sync.Mutex
+		subs   = make(map[string]*realtime.Subscription)
+		wg     sync.WaitGroup
+	)
+
+	// writeDone is closed once the write pump exits so the read pump can wait.
+	writeDone := make(chan struct{})
+
+	// subscribe creates a subscription for channelID and starts a forwarder
+	// goroutine. It is a no-op if already subscribed.
+	subscribe := func(channelID string) {
+		subsMu.Lock()
+		defer subsMu.Unlock()
+		if _, exists := subs[channelID]; exists {
+			return
+		}
+		sub := realtime.NewSubscription(channelID, userID)
+		h.hub.Subscribe(sub)
+		subs[channelID] = sub
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for msg := range sub.Send {
+				select {
+				case connSend <- msg:
+				default:
+					// Drop message if outbound buffer is full — client is too slow.
+				}
+			}
+		}()
+	}
+
+	// unsubscribe removes and cleans up a subscription by channelID.
+	unsubscribe := func(channelID string) {
+		subsMu.Lock()
+		defer subsMu.Unlock()
+		sub, exists := subs[channelID]
+		if !exists {
+			return
+		}
+		h.hub.Unsubscribe(sub)
+		sub.Close()
+		delete(subs, channelID)
+	}
+
+	// Backward-compat: if a channel_id query param is present, auto-subscribe.
+	if legacyChannelID := c.Query("channel_id"); legacyChannelID != "" {
+		subscribe(legacyChannelID)
+	}
+
+	// Write pump: drains connSend and sends frames to the WebSocket.
 	go func() {
+		defer close(writeDone)
 		ctx := c.Request.Context()
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
@@ -128,7 +175,7 @@ func (h *RealtimeHandler) WebSocket(c *gin.Context) {
 				conn.WriteMessage(websocket.CloseMessage,
 					websocket.FormatCloseMessage(websocket.CloseGoingAway, ""))
 				return
-			case msg, ok := <-sub.Send:
+			case msg, ok := <-connSend:
 				conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 				if !ok {
 					conn.WriteMessage(websocket.CloseMessage, []byte{})
@@ -147,18 +194,46 @@ func (h *RealtimeHandler) WebSocket(c *gin.Context) {
 		}
 	}()
 
-	// Read pump — drives the pong handler and detects client disconnect.
-	conn.SetReadLimit(512)
+	// Read pump: parses JSON commands and drives the pong handler /
+	// client-disconnect detection.
+	conn.SetReadLimit(1024)
 	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	conn.SetPongHandler(func(string) error {
 		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
 	})
+
 	for {
-		if _, _, err := conn.ReadMessage(); err != nil {
+		_, raw, err := conn.ReadMessage()
+		if err != nil {
 			break
 		}
+		var cmd wsCommand
+		if jsonErr := json.Unmarshal(raw, &cmd); jsonErr != nil || cmd.ChannelID == "" {
+			continue
+		}
+		switch cmd.Action {
+		case "subscribe":
+			subscribe(cmd.ChannelID)
+		case "unsubscribe":
+			unsubscribe(cmd.ChannelID)
+		}
 	}
+
+	// Cleanup: unsubscribe and close all active subs, then wait for forwarders
+	// to drain, close connSend, and finally wait for the write pump to exit.
+	subsMu.Lock()
+	for channelID, sub := range subs {
+		h.hub.Unsubscribe(sub)
+		sub.Close()
+		delete(subs, channelID)
+	}
+	subsMu.Unlock()
+
+	wg.Wait()
+	close(connSend)
+	<-writeDone
+	conn.Close()
 }
 
 // SSE godoc
