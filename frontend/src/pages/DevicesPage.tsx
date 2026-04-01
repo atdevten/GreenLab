@@ -15,7 +15,7 @@ import { channelsApi } from '../api/channels'
 import { fieldsApi } from '../api/fields'
 import { queryApi } from '../api/query'
 import { workspacesApi } from '../api/workspaces'
-import type { Device as ApiDevice, Workspace } from '../types'
+import type { Device as ApiDevice, Workspace, QueryResponse } from '../types'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip)
 
@@ -93,8 +93,8 @@ function ViewDataDrawer({ device, onClose }: { device: Device | null; onClose():
 
         await Promise.all(chFields.map(async f => {
           const [latestRes, queryRes] = await Promise.allSettled([
-            queryApi.latest({ channel_id: ch.id, field: f.key } as any),
-            queryApi.query({ channel_id: ch.id, field: f.key, limit: 20 } as any),
+            queryApi.latest({ channel_id: ch.id, field: f.key }),
+            queryApi.query({ channel_id: ch.id, field: f.key, limit: 20 }),
           ])
           if (cancelled) return
           if (latestRes.status === 'fulfilled') {
@@ -102,7 +102,7 @@ function ViewDataDrawer({ device, onClose }: { device: Device | null; onClose():
             setLatestMap(prev => ({ ...prev, [f.key]: val }))
           }
           if (queryRes.status === 'fulfilled') {
-            const pts: { timestamp: string; value: number }[] = (queryRes.value as any).data?.data ?? []
+            const pts = (queryRes.value.data as QueryResponse).data_points ?? []
             setChartMap(prev => ({
               ...prev,
               [f.key]: {
