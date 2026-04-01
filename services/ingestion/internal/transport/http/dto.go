@@ -18,7 +18,7 @@ type IngestRequest struct {
 
 // BulkIngestRequest contains a list of readings.
 type BulkIngestRequest struct {
-	Readings []IngestRequest `json:"readings" validate:"required"`
+	Readings []IngestRequest `json:"readings" validate:"required,max=1000"`
 }
 
 // IngestResponse acknowledges a successful write.
