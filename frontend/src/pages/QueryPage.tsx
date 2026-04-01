@@ -58,6 +58,7 @@ export function QueryPage() {
   const [channels, setChannels] = useState<Channel[]>([])
   const [channelsLoading, setChannelsLoading] = useState(true)
   const [fieldOpts, setFieldOpts] = useState<{ key: string; label: string; unit: string; color: string }[]>([])
+  const [fieldsLoading, setFieldsLoading] = useState(false)
 
   const [result, setResult] = useState({
     channel: '',
@@ -100,7 +101,10 @@ export function QueryPage() {
 
   useEffect(() => {
     if (!channel) return
+    let cancelled = false
+    setFieldsLoading(true)
     fieldsApi.list(channel).then(r => {
+      if (cancelled) return
       const opts = r.data.map((f: { name: string; label: string; unit: string }) => ({
         key: f.name,
         label: f.label || f.name,
@@ -109,7 +113,9 @@ export function QueryPage() {
       }))
       setFieldOpts(opts)
       if (opts.length > 0) setField(opts[0].key)
-    }).catch(() => setFieldOpts([]))
+    }).catch(() => { if (!cancelled) setFieldOpts([]) })
+      .finally(() => { if (!cancelled) setFieldsLoading(false) })
+    return () => { cancelled = true }
   }, [channel])
 
   const activeChannel = channels.find(c => c.id === channel)
@@ -236,9 +242,12 @@ export function QueryPage() {
           <select
             value={field}
             onChange={e => setField(e.target.value)}
+            disabled={fieldsLoading}
             style={{ width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '8px 12px', color: 'var(--text)', fontSize: 13, outline: 'none' }}
           >
-            {fieldOpts.map(f => <option key={f.key} value={f.key}>{f.label}{f.unit ? ` (${f.unit})` : ''}</option>)}
+            {fieldsLoading ? (
+              <option>Loading fields…</option>
+            ) : fieldOpts.map(f => <option key={f.key} value={f.key}>{f.label}{f.unit ? ` (${f.unit})` : ''}</option>)}
           </select>
         </div>
         <div>
@@ -252,7 +261,7 @@ export function QueryPage() {
           </select>
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-          <Btn variant="primary" onClick={runQuery} disabled={queryLoading || !channel}>
+          <Btn variant="primary" onClick={runQuery} disabled={queryLoading || !channel || fieldsLoading || fieldOpts.length === 0}>
             {queryLoading ? 'Running…' : 'Run Query'}
           </Btn>
         </div>
