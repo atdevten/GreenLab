@@ -64,10 +64,12 @@ export function LiveDataPage() {
     const orgId = localStorage.getItem('org_id') ?? ''
     if (!orgId) { setLoading(false); return }
 
+    let ignore = false
+
     workspacesApi.list(orgId)
       .then(async r => {
         const wsId = r.data[0]?.id
-        if (!wsId) { setLoading(false); return }
+        if (!wsId) { if (!ignore) setLoading(false); return }
 
         const [chRes, devRes] = await Promise.all([
           channelsApi.list({ workspace_id: wsId }),
@@ -76,7 +78,6 @@ export function LiveDataPage() {
 
         const names: Record<string, string> = {}
         ;(devRes.data as any[]).forEach(d => { names[d.id] = d.name })
-        setDeviceNames(names)
 
         const enriched = await Promise.all(
           (chRes.data as Channel[]).map(async (ch, _chIdx) => {
@@ -94,10 +95,15 @@ export function LiveDataPage() {
             }
           })
         )
-        setChannels(enriched)
+        if (!ignore) {
+          setDeviceNames(names)
+          setChannels(enriched)
+        }
       })
       .catch(() => {})
-      .finally(() => setLoading(false))
+      .finally(() => { if (!ignore) setLoading(false) })
+
+    return () => { ignore = true }
   }, [])
 
   // Effect 1 — WS lifecycle. One connection shared across all channel switches.
