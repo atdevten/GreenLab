@@ -15,7 +15,7 @@ import { channelsApi } from '../api/channels'
 import { fieldsApi } from '../api/fields'
 import { queryApi } from '../api/query'
 import { workspacesApi } from '../api/workspaces'
-import type { Device as ApiDevice, Workspace } from '../types'
+import type { Device as ApiDevice, Workspace, QueryResponse } from '../types'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip)
 
@@ -102,7 +102,7 @@ function ViewDataDrawer({ device, onClose }: { device: Device | null; onClose():
             setLatestMap(prev => ({ ...prev, [f.key]: val }))
           }
           if (queryRes.status === 'fulfilled') {
-            const pts: { timestamp: string; value: number }[] = (queryRes.value as any).data?.data_points ?? []
+            const pts = (queryRes.value.data as QueryResponse).data_points ?? []
             setChartMap(prev => ({
               ...prev,
               [f.key]: {
