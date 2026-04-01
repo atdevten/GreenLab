@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 
 	"github.com/google/uuid"
@@ -16,7 +17,7 @@ import (
 func newTestChannelService(t *testing.T) (*ChannelService, *mockchannel.MockChannelRepository) {
 	t.Helper()
 	repo := mockchannel.NewMockChannelRepository(t)
-	svc := NewChannelService(repo)
+	svc := NewChannelService(repo, slog.Default())
 	return svc, repo
 }
 

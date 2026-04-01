@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -19,6 +20,9 @@ type RateLimitConfig struct {
 	Window time.Duration
 	// KeyFunc extracts a key from the request (e.g., IP or user ID).
 	KeyFunc func(c *gin.Context) string
+	// Logger is an optional structured logger. When non-nil, Redis failures are
+	// logged at Error level. A nil Logger means silent fail-open behaviour.
+	Logger *slog.Logger
 }
 
 // RateLimit returns a Redis-backed sliding window rate limiter middleware.
@@ -47,6 +51,9 @@ func RateLimit(rdb *redis.Client, cfg RateLimitConfig) gin.HandlerFunc {
 		_, err := pipe.Exec(ctx)
 		if err != nil {
 			// On Redis failure, allow the request
+			if cfg.Logger != nil {
+				cfg.Logger.ErrorContext(c.Request.Context(), "rate limiter redis failure — allowing request", "error", err, "key", key)
+			}
 			c.Next()
 			return
 		}
