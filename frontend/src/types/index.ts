@@ -39,9 +39,9 @@ export interface CreateAlertRuleRequest { workspace_id: string; name: string; de
 export type NotifType = 'critical' | 'warning' | 'info' | 'resolved'
 export interface Notification { id: string; type: NotifType; title: string; message: string; read: boolean; created_at: string; rule_id?: string }
 
-export interface QueryParams { channel_id: string; field_key: string; start?: string; end?: string; aggregate?: string; interval?: string }
-export type QueryResult = { timestamp: string; value: number }[]
-export interface QueryResponse { channel_id: string; field_key: string; aggregate: string; data: QueryResult }
+export interface QueryParams { channel_id: string; field?: string; start?: string; end?: string; aggregate?: string; limit?: number; window?: string }
+export type QueryResult = { timestamp: string; value: number; field: string }[]
+export interface QueryResponse { channel_id: string; field_name: string; data_points: QueryResult; count: number; start: string; end: string }
 
 export interface DashboardStats { active_devices: number; readings_24h: number; active_alerts: number; total_channels: number }
 

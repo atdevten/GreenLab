@@ -5,6 +5,7 @@ import { Btn } from '../components/ui/Button'
 import { useTheme } from '../hooks/useTheme'
 import { queryApi } from '../api/query'
 import { channelsApi } from '../api/channels'
+import { fieldsApi } from '../api/fields'
 import { workspacesApi } from '../api/workspaces'
 import { useToast } from '../contexts/ToastContext'
 import type { Channel } from '../types'
@@ -56,6 +57,7 @@ export function QueryPage() {
 
   const [channels, setChannels] = useState<Channel[]>([])
   const [channelsLoading, setChannelsLoading] = useState(true)
+  const [fieldOpts, setFieldOpts] = useState<{ key: string; label: string; unit: string; color: string }[]>([])
 
   const [result, setResult] = useState({
     channel: '',
@@ -89,30 +91,31 @@ export function QueryPage() {
         return channelsApi.list({ workspace_id: wsId })
           .then(cr => {
             setChannels(cr.data)
-            if (cr.data.length > 0) {
-              setChannel(cr.data[0].id)
-              const firstField = cr.data[0].fields?.[0]
-              if (firstField) setField(firstField.key)
-            }
+            if (cr.data.length > 0) setChannel(cr.data[0].id)
           })
           .finally(() => setChannelsLoading(false))
       })
       .catch(() => setChannelsLoading(false))
   }, [])
 
+  useEffect(() => {
+    if (!channel) return
+    fieldsApi.list(channel).then(r => {
+      const opts = r.data.map((f: { name: string; label: string; unit: string }) => ({
+        key: f.name,
+        label: f.label || f.name,
+        unit: f.unit ?? '',
+        color: '#3b82f6',
+      }))
+      setFieldOpts(opts)
+      if (opts.length > 0) setField(opts[0].key)
+    }).catch(() => setFieldOpts([]))
+  }, [channel])
+
   const activeChannel = channels.find(c => c.id === channel)
-  const fieldOpts = activeChannel?.fields?.map(f => ({
-    label: f.name || f.key,
-    unit: f.unit ?? '',
-    color: f.color ?? '#3b82f6',
-    key: f.key,
-  })) ?? []
 
   function handleChannelChange(chId: string) {
     setChannel(chId)
-    const ch = channels.find(c => c.id === chId)
-    const firstField = ch?.fields?.[0]
-    if (firstField) setField(firstField.key)
   }
 
   function runQuery() {
@@ -120,12 +123,18 @@ export function QueryPage() {
     const range = preset === 'Custom'
       ? { start: customStart, end: customEnd }
       : presetToRange(preset)
-    const aggValue = agg === 'Raw' ? 'raw' : agg.toLowerCase().replace(/\s*\(.*\)/, '').trim()
+    let aggValue: string | undefined
+    let windowValue: string | undefined
+    if (agg !== 'Raw') {
+      aggValue = agg.toLowerCase().replace(/\s*\(.*\)/, '').trim()
+      const windowMatch = agg.match(/\((\d+[smhd])\)/)
+      if (windowMatch) windowValue = windowMatch[1]
+    }
 
     setQueryLoading(true)
-    queryApi.query({ channel_id: channel, field_key: field, ...range, aggregate: aggValue })
+    queryApi.query({ channel_id: channel, field, ...range, aggregate: aggValue, window: windowValue })
       .then(r => {
-        const data = r.data.data ?? []
+        const data = r.data.data_points ?? []
         setApiChartData({
           labels: data.map((d: { timestamp: string }) => new Date(d.timestamp).toLocaleTimeString()),
           values: data.map((d: { value: number }) => d.value),
@@ -143,7 +152,7 @@ export function QueryPage() {
     const range = preset === 'Custom'
       ? { start: customStart, end: customEnd }
       : presetToRange(preset)
-    queryApi.export({ channel_id: channel, field_key: field, ...range })
+    queryApi.export({ channel_id: channel, field, ...range })
       .then(r => downloadBlob(r.data as Blob, 'query-export.csv'))
       .catch(() => toast('Export failed', 'error'))
   }

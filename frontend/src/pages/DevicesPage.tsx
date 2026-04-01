@@ -93,8 +93,8 @@ function ViewDataDrawer({ device, onClose }: { device: Device | null; onClose():
 
         await Promise.all(chFields.map(async f => {
           const [latestRes, queryRes] = await Promise.allSettled([
-            queryApi.latest({ channel_id: ch.id, field: f.key } as any),
-            queryApi.query({ channel_id: ch.id, field: f.key, limit: 20 } as any),
+            queryApi.latest({ channel_id: ch.id, field: f.key }),
+            queryApi.query({ channel_id: ch.id, field: f.key, limit: 20 }),
           ])
           if (cancelled) return
           if (latestRes.status === 'fulfilled') {
@@ -102,7 +102,7 @@ function ViewDataDrawer({ device, onClose }: { device: Device | null; onClose():
             setLatestMap(prev => ({ ...prev, [f.key]: val }))
           }
           if (queryRes.status === 'fulfilled') {
-            const pts: { timestamp: string; value: number }[] = (queryRes.value as any).data?.data ?? []
+            const pts: { timestamp: string; value: number }[] = (queryRes.value as any).data?.data_points ?? []
             setChartMap(prev => ({
               ...prev,
               [f.key]: {
