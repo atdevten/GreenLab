@@ -397,7 +397,5 @@ These decisions should not be revisited without explicit discussion:
 
 ## Frontend — from PR #38 review
 
-### [TODO-039] Fix QueryParams field_key vs field param name mismatch
-**What:** `frontend/src/types/index.ts` defines `QueryParams.field_key` but the backend query-realtime service reads `c.Query("field")` (see `services/query-realtime/internal/transport/http/dto.go` — `FieldName string \`form:"field"\``). The `queryApi.query()` and `queryApi.latest()` calls in `QueryPage.tsx` and `ViewDataDrawer` send `field_key` which the backend ignores, meaning field-scoped queries return all fields instead of filtering. The `as any` casts in `ViewDataDrawer` work around the type but don't fix the underlying mismatch.
-**How to fix:** Rename `field_key` → `field` in `QueryParams` (types/index.ts), update `queryApi.latest` signature, and update all call sites (`QueryPage.tsx`, `ViewDataDrawer`).
-**Effort:** S | **Priority:** P2 | **Depends on:** Nothing
+### ~~[TODO-039] Fix QueryParams field_key vs field param name mismatch~~ ✅ DONE (2026-04-01)
+Renamed `field_key` → `field` in `QueryParams` (types/index.ts) and updated `queryApi.latest()` signature. All call sites in `QueryPage.tsx` updated. `as any` casts removed.
