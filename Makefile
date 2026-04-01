@@ -106,6 +106,24 @@ migrate-down:
 	migrate -path services/$(service)/migrations \
 		-database "postgres://greenlab:greenlab@localhost:5433/$$db?sslmode=disable" down 1
 
+migrate-down-all:
+	@$(MAKE) migrate-down-service service=supporting
+	@$(MAKE) migrate-down-service service=alert-notification
+	@$(MAKE) migrate-down-service service=device-registry
+	@$(MAKE) migrate-down-service service=iam
+
+migrate-down-service:
+	@if [ -z "$(service)" ]; then echo "Usage: make migrate-down-service service=<name>"; exit 1; fi; \
+	case "$(service)" in \
+		iam)                db=iam_db ;; \
+		device-registry)    db=device_registry_db ;; \
+		alert-notification) db=alert_db ;; \
+		supporting)         db=supporting_db ;; \
+		*) echo "No migrations for service '$(service)'. Valid: iam, device-registry, alert-notification, supporting"; exit 1 ;; \
+	esac; \
+	migrate -path services/$(service)/migrations \
+		-database "postgres://greenlab:greenlab@localhost:5433/$$db?sslmode=disable" down --all
+
 # swagger regenerates Swagger docs for all services that have a docs/ directory.
 # Requires: go install github.com/swaggo/swag/cmd/swag@latest
 SWAGGER_SERVICES := iam device-registry ingestion query-realtime alert-notification supporting

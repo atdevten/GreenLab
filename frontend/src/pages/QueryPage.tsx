@@ -14,16 +14,6 @@ const presets = ['Last 1h', 'Last 6h', 'Last 24h', 'Last 7d', 'Last 30d', 'Custo
 
 const AGG_OPTS = ['Raw', 'Mean (5m)', 'Mean (1h)', 'Max', 'Min']
 
-// Stable data keyed by query so re-renders don't regenerate
-const dataCache: Record<string, number[]> = {}
-function getQueryData(key: string, len: number): number[] {
-  if (!dataCache[key]) {
-    dataCache[key] = Array.from({ length: len }, () => Math.round(60 + Math.random() * 80))
-  }
-  return dataCache[key]
-}
-
-const timeLabels = Array.from({ length: 24 }, (_, i) => `${i}:00`)
 
 function presetToRange(preset: string): { start: string; end: string } {
   const now = new Date()
@@ -163,9 +153,10 @@ export function QueryPage() {
       .catch(() => toast('Export failed', 'error'))
   }
 
+  const hasResult = apiChartData !== null
   const chartData = apiChartData === 'error' ? null : apiChartData
-  const displayLabels = chartData?.labels ?? (apiChartData === null ? timeLabels : [])
-  const displayValues = chartData?.values ?? (apiChartData === null ? getQueryData(`${result.channel}|${result.field}|${result.range}`, timeLabels.length) : [])
+  const displayLabels = chartData?.labels ?? []
+  const displayValues = chartData?.values ?? []
   const tableData = displayValues.slice(0, 8)
   const tableLabels = displayLabels.slice(0, 8)
 
@@ -267,80 +258,104 @@ export function QueryPage() {
         </div>
       </div>
 
-      {/* Chart — title reflects last run query */}
-      <Card style={{ marginBottom: 16 }}>
-        <CardTitle>
-          {result.field}{result.unit ? ` (${result.unit})` : ''} — {result.range}
-          {result.agg !== 'Raw' && (
-            <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>· {result.agg}</span>
-          )}
-        </CardTitle>
-        <div style={{ position: 'relative', height: 280 }}>
-          {queryLoading ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 280 }}>
-              <div style={{ width: 24, height: 24, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-            </div>
-          ) : (
-            <Line
-              data={{
-                labels: displayLabels,
-                datasets: [{
-                  label: result.field,
-                  data: displayValues,
-                  borderColor: result.color,
-                  backgroundColor: result.color + '20',
-                  fill: true, tension: 0.4, pointRadius: 3,
-                  pointBackgroundColor: result.color,
-                }],
-              }}
-              options={chartOpts as any}
-            />
-          )}
-        </div>
-      </Card>
+      {/* Chart — only shown after a query has been run */}
+      {!channelsLoading && channels.length === 0 ? (
+        <Card style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 280, gap: 8, color: 'var(--muted)' }}>
+            <span style={{ fontSize: 32 }}>📡</span>
+            <span style={{ fontSize: 14, fontWeight: 500 }}>No channels found</span>
+            <span style={{ fontSize: 12 }}>Create a channel first to start querying data.</span>
+          </div>
+        </Card>
+      ) : (
+        <Card style={{ marginBottom: 16 }}>
+          <CardTitle>
+            {hasResult
+              ? <>{result.field}{result.unit ? ` (${result.unit})` : ''} — {result.range}{result.agg !== 'Raw' && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>· {result.agg}</span>}</>
+              : 'Chart'
+            }
+          </CardTitle>
+          <div style={{ position: 'relative', height: 280 }}>
+            {queryLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 280 }}>
+                <div style={{ width: 24, height: 24, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+              </div>
+            ) : !hasResult ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 280, gap: 8, color: 'var(--muted)' }}>
+                <span style={{ fontSize: 32 }}>📊</span>
+                <span style={{ fontSize: 14, fontWeight: 500 }}>No data yet</span>
+                <span style={{ fontSize: 12 }}>Select a channel and field, then click Run Query.</span>
+              </div>
+            ) : (
+              <Line
+                data={{
+                  labels: displayLabels,
+                  datasets: [{
+                    label: result.field,
+                    data: displayValues,
+                    borderColor: result.color,
+                    backgroundColor: result.color + '20',
+                    fill: true, tension: 0.4, pointRadius: 3,
+                    pointBackgroundColor: result.color,
+                  }],
+                }}
+                options={chartOpts as any}
+              />
+            )}
+          </div>
+        </Card>
+      )}
 
-      {/* Data table — reflects last run query */}
-      <Card>
-        <CardTitle>
-          Raw Data
-          <span style={{ marginLeft: 'auto' }}>
-            <Btn variant="ghost" size="sm" onClick={handleExportCsv}>⬇ Export CSV</Btn>
-          </span>
-        </CardTitle>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                {['Timestamp', 'Channel', 'Field', 'Value', 'Unit'].map(h => (
-                  <th key={h} style={{
-                    fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
-                    letterSpacing: '.06em', color: 'var(--muted)', textAlign: 'left',
-                    padding: '10px 12px', borderBottom: '1px solid var(--border)',
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {tableData.map((v, i) => (
-                <tr
-                  key={i}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface2)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  style={{ transition: 'background .1s' }}
-                >
-                  <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border2)', fontFamily: 'monospace', fontSize: 12, color: 'var(--muted)' }}>
-                    {tableLabels[i] ?? '—'}
-                  </td>
-                  <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border2)', fontSize: 13 }}>{result.channel}</td>
-                  <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border2)', color: result.color, fontFamily: 'monospace', fontSize: 12 }}>{result.field}</td>
-                  <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border2)', fontWeight: 600 }}>{v}</td>
-                  <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border2)', color: 'var(--muted)' }}>{result.unit || '—'}</td>
+      {/* Data table — only shown after a query has been run */}
+      {hasResult && (
+        <Card>
+          <CardTitle>
+            Raw Data
+            <span style={{ marginLeft: 'auto' }}>
+              <Btn variant="ghost" size="sm" onClick={handleExportCsv}>⬇ Export CSV</Btn>
+            </span>
+          </CardTitle>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  {['Timestamp', 'Channel', 'Field', 'Value', 'Unit'].map(h => (
+                    <th key={h} style={{
+                      fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
+                      letterSpacing: '.06em', color: 'var(--muted)', textAlign: 'left',
+                      padding: '10px 12px', borderBottom: '1px solid var(--border)',
+                    }}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+              </thead>
+              <tbody>
+                {tableData.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ padding: '20px 12px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+                      No data points returned for this query.
+                    </td>
+                  </tr>
+                ) : tableData.map((v, i) => (
+                  <tr
+                    key={i}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    style={{ transition: 'background .1s' }}
+                  >
+                    <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border2)', fontFamily: 'monospace', fontSize: 12, color: 'var(--muted)' }}>
+                      {tableLabels[i] ?? '—'}
+                    </td>
+                    <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border2)', fontSize: 13 }}>{result.channel}</td>
+                    <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border2)', color: result.color, fontFamily: 'monospace', fontSize: 12 }}>{result.field}</td>
+                    <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border2)', fontWeight: 600 }}>{v}</td>
+                    <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border2)', color: 'var(--muted)' }}>{result.unit || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
     </div>
   )
 }
