@@ -39,7 +39,9 @@ export function LiveDataPage() {
   const [fieldVals, setFieldVals]       = useState<Record<string, FieldVal>>({})
   const [history, setHistory]           = useState<Record<string, HistEntry[]>>({})
   const [wsStatus, setWsStatus]         = useState<WsStatus>('disconnected')
-  const wsRef = useRef<WebSocket | null>(null)
+  const wsRef            = useRef<WebSocket | null>(null)
+  const subscribedRef    = useRef<string | null>(null)   // currently subscribed channelId
+  const activeChannelRef = useRef<number>(0)             // current active index (for onopen closure)
   const { theme } = useTheme()
 
   const isDark    = theme === 'dark'
@@ -98,70 +100,100 @@ export function LiveDataPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  // Connect WebSocket when active channel changes
+  // Effect 1 — WS lifecycle. One connection shared across all channel switches.
   useEffect(() => {
-    if (wsRef.current) {
-      wsRef.current.close()
-      wsRef.current = null
+    if (channels.length === 0) return
+
+    const token = localStorage.getItem('access_token') ?? ''
+    const wsUrl = `${BASE_URL.replace(/^http/, 'ws')}/api/v1/ws?token=${token}`
+
+    setWsStatus('connecting')
+    let ws: WebSocket
+    try {
+      ws = new WebSocket(wsUrl)
+    } catch {
+      setWsStatus('disconnected')
+      return
     }
+    wsRef.current = ws
+
+    ws.onopen = () => {
+      setWsStatus('connected')
+      // Subscribe to whichever channel is active at the moment the socket opens.
+      const initialChannelId = channels[activeChannelRef.current]?.id
+      if (initialChannelId) {
+        ws.send(JSON.stringify({ action: 'subscribe', channel_id: initialChannelId }))
+        subscribedRef.current = initialChannelId
+      }
+    }
+
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data) as WsPush
+        if (!msg.fields || typeof msg.fields !== 'object') return
+        const ts = msg.timestamp
+          ? new Date(msg.timestamp).toLocaleTimeString()
+          : new Date().toLocaleTimeString()
+
+        setFieldVals(prev => {
+          const next = { ...prev }
+          for (const [key, val] of Object.entries(msg.fields)) {
+            const prevVal = prev[key]?.value ?? val
+            const diff    = val - prevVal
+            next[key] = {
+              value: val,
+              trend: diff >= 0 ? `+${diff.toFixed(2)}` : diff.toFixed(2),
+            }
+          }
+          return next
+        })
+
+        setHistory(prev => {
+          const next = { ...prev }
+          for (const [key, val] of Object.entries(msg.fields)) {
+            const arr = prev[key] ?? []
+            next[key] = [...arr.slice(-(HISTORY_LEN - 1)), { time: ts, value: val }]
+          }
+          return next
+        })
+      } catch {}
+    }
+
+    ws.onerror = () => { setWsStatus('disconnected'); wsRef.current = null; subscribedRef.current = null }
+    ws.onclose = () => { setWsStatus('disconnected'); wsRef.current = null; subscribedRef.current = null }
+
+    return () => {
+      ws.close()
+      wsRef.current = null
+      subscribedRef.current = null
+    }
+  }, [channels])
+
+  // Effect 2 — Subscription management. Runs when the active tab changes.
+  useEffect(() => {
+    const newChannelId = channels[active]?.id
+    if (!newChannelId) return
+
+    // Clear display state for the incoming channel.
     setFieldVals({})
     setHistory({})
 
-    const channelId = channels[active]?.id
-    if (!channelId) return
+    // Keep the ref in sync so Effect 1's onopen closure sees the right value.
+    activeChannelRef.current = active
 
-    const token = localStorage.getItem('access_token') ?? ''
-    const wsUrl  = `${BASE_URL.replace(/^http/, 'ws')}/api/v1/ws?channel_id=${channelId}&token=${token}`
+    // If the socket is not yet open, onopen will handle the initial subscribe.
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return
 
-    setWsStatus('connecting')
-    try {
-      const ws = new WebSocket(wsUrl)
-      wsRef.current = ws
+    const ws = wsRef.current
 
-      ws.onopen = () => setWsStatus('connected')
-
-      ws.onmessage = (evt) => {
-        try {
-          const msg = JSON.parse(evt.data) as WsPush
-          if (!msg.fields || typeof msg.fields !== 'object') return
-          const ts = msg.timestamp
-            ? new Date(msg.timestamp).toLocaleTimeString()
-            : new Date().toLocaleTimeString()
-
-          setFieldVals(prev => {
-            const next = { ...prev }
-            for (const [key, val] of Object.entries(msg.fields)) {
-              const prevVal = prev[key]?.value ?? val
-              const diff    = val - prevVal
-              next[key] = {
-                value: val,
-                trend: diff >= 0 ? `+${diff.toFixed(2)}` : diff.toFixed(2),
-              }
-            }
-            return next
-          })
-
-          setHistory(prev => {
-            const next = { ...prev }
-            for (const [key, val] of Object.entries(msg.fields)) {
-              const arr = prev[key] ?? []
-              next[key] = [...arr.slice(-(HISTORY_LEN - 1)), { time: ts, value: val }]
-            }
-            return next
-          })
-        } catch {}
-      }
-
-      ws.onerror = () => { setWsStatus('disconnected'); wsRef.current = null }
-      ws.onclose = () => { setWsStatus('disconnected'); wsRef.current = null }
-    } catch {
-      setWsStatus('disconnected')
-      wsRef.current = null
+    // Unsubscribe from the previous channel if it differs.
+    if (subscribedRef.current && subscribedRef.current !== newChannelId) {
+      ws.send(JSON.stringify({ action: 'unsubscribe', channel_id: subscribedRef.current }))
     }
 
-    return () => {
-      if (wsRef.current) { wsRef.current.close(); wsRef.current = null }
-    }
+    // Subscribe to the new channel.
+    ws.send(JSON.stringify({ action: 'subscribe', channel_id: newChannelId }))
+    subscribedRef.current = newChannelId
   }, [active, channels])
 
   const ch        = channels[active]

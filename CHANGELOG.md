@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.2.2] - 2026-04-02
+
+### Changed
+
+- **Live Data**: WebSocket connections are now multiplexed — one persistent connection per page instead of one per channel. Switching channels sends subscribe/unsubscribe messages over the existing socket, eliminating reconnect overhead and reducing server-side connection count.
+
 ## [0.0.2.1] - 2026-04-01
 
 ### Fixed
