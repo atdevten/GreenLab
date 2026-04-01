@@ -16,6 +16,7 @@ import { useTheme } from '../hooks/useTheme'
 import { devicesApi } from '../api/devices'
 import { channelsApi } from '../api/channels'
 import { notificationsApi } from '../api/notifications'
+import { workspacesApi } from '../api/workspaces'
 import type { Device, Channel, Notification } from '../types'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler)
@@ -58,15 +59,23 @@ export function DashboardPage() {
   const { theme } = useTheme()
 
   useEffect(() => {
-    Promise.all([
-      devicesApi.list(),
-      channelsApi.list(),
-      notificationsApi.list(),
-    ]).then(([devRes, chanRes, notifRes]) => {
-      setDevices(devRes.data ?? [])
-      setChannels(chanRes.data ?? [])
-      setNotifications(notifRes.data ?? [])
-    }).catch(() => {}).finally(() => setLoading(false))
+    const orgId = localStorage.getItem('org_id') ?? ''
+    if (!orgId) { setLoading(false); return }
+
+    workspacesApi.list(orgId).then(wsRes => {
+      const wsId = wsRes.data?.[0]?.id
+      if (!wsId) { setLoading(false); return }
+
+      Promise.allSettled([
+        devicesApi.list({ workspace_id: wsId }),
+        channelsApi.list({ workspace_id: wsId }),
+        notificationsApi.list(),
+      ]).then(([devRes, chanRes, notifRes]) => {
+        if (devRes.status === 'fulfilled') setDevices(devRes.value.data ?? [])
+        if (chanRes.status === 'fulfilled') setChannels(chanRes.value.data ?? [])
+        if (notifRes.status === 'fulfilled') setNotifications(notifRes.value.data ?? [])
+      }).finally(() => setLoading(false))
+    }).catch(() => setLoading(false))
   }, [])
 
   const activeDevices = devices.filter(d => d.status === 'active').length
