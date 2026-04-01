@@ -13,8 +13,10 @@ import { LiveBadge } from '../components/ui/Badge'
 import { Btn } from '../components/ui/Button'
 import { RegisterDeviceDrawer } from '../components/ui/RegisterDeviceDrawer'
 import { useTheme } from '../hooks/useTheme'
-import { queryApi } from '../api/query'
-import type { DashboardStats } from '../types'
+import { devicesApi } from '../api/devices'
+import { channelsApi } from '../api/channels'
+import { notificationsApi } from '../api/notifications'
+import type { Device, Channel, Notification } from '../types'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler)
 
@@ -23,25 +25,64 @@ const ingestionData = [120,98,88,72,160,210,188,240,280,310,270,248]
 const alertDays = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 const alertCounts = [2, 1, 4, 1, 3, 0, 2]
 
-const devices = [
-  { name: 'Greenhouse Sensor A', lat: 10.776, lng: 106.700, status: 'online' },
-  { name: 'Farm Node B',         lat: 10.850, lng: 106.780, status: 'online' },
-  { name: 'Air Monitor',         lat: 10.730, lng: 106.650, status: 'online' },
-  { name: 'Water Quality',       lat: 10.795, lng: 106.720, status: 'warning' },
-  { name: 'R&D Lab Node',        lat: 10.810, lng: 106.660, status: 'offline' },
-]
+function timeAgo(isoDate: string): string {
+  const ts = new Date(isoDate).getTime()
+  if (Number.isNaN(ts)) return 'unknown'
+  const diff = Date.now() - ts
+  const mins = Math.floor(diff / 60000)
+  if (mins < 60) return `${mins} min ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs} hr ago`
+  return `${Math.floor(hrs / 24)} days ago`
+}
+
+function notifColor(type: string): string {
+  if (type === 'critical') return 'var(--red)'
+  if (type === 'warning') return 'var(--yellow)'
+  return 'var(--green)'
+}
+
+function notifIcon(type: string): string {
+  if (type === 'critical') return '🔴'
+  if (type === 'warning') return '🟡'
+  return '🟢'
+}
 
 export function DashboardPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [devices, setDevices] = useState<Device[]>([])
+  const [channels, setChannels] = useState<Channel[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
   const navigate = useNavigate()
   const { theme } = useTheme()
 
   useEffect(() => {
-    queryApi.stats()
-      .then(r => setStats(r.data))
-      .catch(() => {})
+    Promise.all([
+      devicesApi.list(),
+      channelsApi.list(),
+      notificationsApi.list(),
+    ]).then(([devRes, chanRes, notifRes]) => {
+      setDevices(devRes.data ?? [])
+      setChannels(chanRes.data ?? [])
+      setNotifications(notifRes.data ?? [])
+    }).catch(() => {}).finally(() => setLoading(false))
   }, [])
+
+  const activeDevices = devices.filter(d => d.status === 'active').length
+  const readings24h = channels.reduce((sum, c) => sum + (c.reads_24h ?? 0), 0)
+  const activeAlerts = notifications.filter(n => !n.read && (n.type === 'critical' || n.type === 'warning')).length
+  const totalChannels = channels.length
+
+  const topChannels = [...channels]
+    .sort((a, b) => (b.reads_24h ?? 0) - (a.reads_24h ?? 0))
+    .slice(0, 4)
+
+  const recentAlerts = notifications
+    .filter(n => n.type === 'critical' || n.type === 'warning')
+    .slice(0, 3)
+
+  const mapDevices = devices.filter(d => d.lat != null && d.lng != null)
 
   const isDark = theme === 'dark'
   const gridColor  = isDark ? 'rgba(48,54,61,.6)'  : 'rgba(208,215,222,.8)'
@@ -78,21 +119,10 @@ export function DashboardPage() {
         display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
         gap: 16, marginBottom: 24,
       }}>
-        {stats ? (
-          <>
-            <StatCard label="Active Devices"   icon="🔌" value={String(stats.active_devices)}  change="↑ 2 this week"       changeUp />
-            <StatCard label="Readings (24h)"   icon="📊" value={stats.readings_24h >= 1000 ? `${(stats.readings_24h / 1000).toFixed(0)}K` : String(stats.readings_24h)} change="↑ 12% vs yesterday" changeUp />
-            <StatCard label="Active Alerts"    icon="🔔" value={<span style={{ color: 'var(--red)' }}>{stats.active_alerts}</span>} change="↑ 1 critical" />
-            <StatCard label="Channels"         icon="📡" value={String(stats.total_channels)}  change="↑ 4 this month"      changeUp />
-          </>
-        ) : (
-          <>
-            <StatCard label="Active Devices"   icon="🔌" value="—" change="" />
-            <StatCard label="Readings (24h)"   icon="📊" value="—" change="" />
-            <StatCard label="Active Alerts"    icon="🔔" value="—" change="" />
-            <StatCard label="Channels"         icon="📡" value="—" change="" />
-          </>
-        )}
+        <StatCard label="Active Devices" icon="🔌" value={loading ? '—' : String(activeDevices)} change="" />
+        <StatCard label="Readings (24h)" icon="📊" value={loading ? '—' : (readings24h >= 1000 ? `${(readings24h / 1000).toFixed(0)}K` : String(readings24h))} change="" />
+        <StatCard label="Active Alerts"  icon="🔔" value={loading ? '—' : <span style={{ color: 'var(--red)' }}>{activeAlerts}</span>} change="" />
+        <StatCard label="Channels"       icon="📡" value={loading ? '—' : String(totalChannels)} change="" />
       </div>
 
       {/* Charts row */}
@@ -150,19 +180,19 @@ export function DashboardPage() {
               View all →
             </a>
           </CardTitle>
-          {[
-            { color: 'var(--red)',    title: '🔴 Temperature exceeded 85°C', sub: 'Greenhouse Sensor A · field1', time: '2 min ago' },
-            { color: 'var(--yellow)', title: '🟡 Humidity below 30%',        sub: 'Farm Node B · field2',        time: '18 min ago' },
-            { color: 'var(--green)',  title: '🟢 CO₂ level back to normal',  sub: 'Air Monitor · field3',        time: '1 hr ago' },
-          ].map((ev, i, arr) => (
-            <div key={i} style={{
+          {loading ? (
+            <div style={{ fontSize: 13, color: 'var(--muted)', padding: '12px 0' }}>Loading…</div>
+          ) : recentAlerts.length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--muted)', padding: '12px 0' }}>No recent alerts</div>
+          ) : recentAlerts.map((ev, i, arr) => (
+            <div key={ev.id} style={{
               display: 'flex', gap: 14, padding: '12px 0',
               borderBottom: i < arr.length - 1 ? '1px solid var(--border2)' : 'none',
             }}>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <span style={{
-                  width: 10, height: 10, borderRadius: '50',
-                  background: ev.color, flexShrink: 0, marginTop: 4,
+                  width: 10, height: 10, borderRadius: '50%',
+                  background: notifColor(ev.type), flexShrink: 0, marginTop: 4,
                   display: 'inline-block',
                 }} />
                 {i < arr.length - 1 && (
@@ -170,10 +200,10 @@ export function DashboardPage() {
                 )}
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{ev.title}</div>
-                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{ev.sub}</div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{notifIcon(ev.type)} {ev.title}</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{ev.message}</div>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{ev.time}</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{timeAgo(ev.created_at)}</div>
             </div>
           ))}
         </Card>
@@ -184,7 +214,7 @@ export function DashboardPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                {['Channel','Readings (24h)','Trend'].map(h => (
+                {['Channel', 'Readings (24h)', 'Fields'].map(h => (
                   <th key={h} style={{
                     fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
                     letterSpacing: '.06em', color: 'var(--muted)', textAlign: 'left',
@@ -194,19 +224,21 @@ export function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {[
-                { name: 'Greenhouse A', fields: 4, reads: '42,110', trend: '↑ 14%', up: true },
-                { name: 'Farm Node B',  fields: 3, reads: '38,520', trend: '↑ 5%',  up: true },
-                { name: 'Air Monitor',  fields: 6, reads: '27,094', trend: '↓ 3%',  up: false },
-                { name: 'Water Quality',fields: 5, reads: '19,882', trend: '↑ 21%', up: true },
-              ].map((row, i, arr) => (
-                <tr key={i}>
+              {loading ? (
+                <tr><td colSpan={3} style={{ padding: '12px 12px', color: 'var(--muted)', fontSize: 13 }}>Loading…</td></tr>
+              ) : topChannels.length === 0 ? (
+                <tr><td colSpan={3} style={{ padding: '12px 12px', color: 'var(--muted)', fontSize: 13 }}>No channels found</td></tr>
+              ) : topChannels.map((row, i, arr) => (
+                <tr key={row.id}>
                   <td style={{ padding: '12px 12px', borderBottom: i < arr.length - 1 ? '1px solid var(--border2)' : 'none' }}>
                     <div style={{ fontWeight: 600 }}>{row.name}</div>
-                    <div style={{ color: 'var(--muted)', fontSize: 11 }}>{row.fields} fields</div>
                   </td>
-                  <td style={{ padding: '12px 12px', borderBottom: i < arr.length - 1 ? '1px solid var(--border2)' : 'none' }}>{row.reads}</td>
-                  <td style={{ padding: '12px 12px', borderBottom: i < arr.length - 1 ? '1px solid var(--border2)' : 'none', color: row.up ? 'var(--green)' : 'var(--red)' }}>{row.trend}</td>
+                  <td style={{ padding: '12px 12px', borderBottom: i < arr.length - 1 ? '1px solid var(--border2)' : 'none' }}>
+                    {(row.reads_24h ?? 0) >= 1000 ? `${((row.reads_24h ?? 0) / 1000).toFixed(1)}K` : (row.reads_24h ?? 0)}
+                  </td>
+                  <td style={{ padding: '12px 12px', borderBottom: i < arr.length - 1 ? '1px solid var(--border2)' : 'none', color: 'var(--muted)' }}>
+                    {row.fields?.length ?? 0}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -230,13 +262,13 @@ export function DashboardPage() {
             zoomControl={true}
           >
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-            {devices.map((d, i) => (
+            {mapDevices.map((d, i) => (
               <CircleMarker
-                key={i}
-                center={[d.lat, d.lng]}
+                key={d.id ?? i}
+                center={[d.lat!, d.lng!]}
                 radius={8}
-                color={d.status === 'online' ? '#22c55e' : d.status === 'warning' ? '#f59e0b' : '#ef4444'}
-                fillColor={d.status === 'online' ? '#22c55e' : d.status === 'warning' ? '#f59e0b' : '#ef4444'}
+                color={d.status === 'active' ? '#22c55e' : d.status === 'inactive' ? '#f59e0b' : '#ef4444'}
+                fillColor={d.status === 'active' ? '#22c55e' : d.status === 'inactive' ? '#f59e0b' : '#ef4444'}
                 fillOpacity={0.8}
               >
                 <Popup>
