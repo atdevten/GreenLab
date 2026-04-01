@@ -25,4 +25,6 @@ type BulkIngestRequest struct {
 type IngestResponse struct {
 	Accepted  int       `json:"accepted"`
 	WrittenAt time.Time `json:"written_at"`
+	ChannelID string    `json:"channel_id"`
+	RequestID string    `json:"request_id"`
 }

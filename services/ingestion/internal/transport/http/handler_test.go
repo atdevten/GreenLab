@@ -39,12 +39,15 @@ func newTestHandler(svc ingestService) *Handler {
 	return NewHandler(svc, slog.Default())
 }
 
+const testRequestID = "test-request-id-1234"
+
 func buildRouter(h *Handler, schema domain.DeviceSchema) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(func(c *gin.Context) {
 		c.Set("device_schema", schema)
 		c.Set("device_id", schema.DeviceID)
+		c.Set("request_id", testRequestID)
 		c.Next()
 	})
 	r.POST("/v1/channels/:channel_id/data", h.Ingest)
@@ -293,6 +296,86 @@ func TestHandler_ErrorToHTTPResponse(t *testing.T) {
 		body, _ := json.Marshal(map[string]any{"fields": map[string]float64{"temp": 1.0}})
 		w := doRequest(r, "POST", "/v1/channels/"+channelID+"/data", body, "application/json")
 		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+}
+
+// parseIngestResponse decodes the shared response envelope and returns the
+// data payload as an IngestResponse.
+func parseIngestResponse(t *testing.T, body []byte) IngestResponse {
+	t.Helper()
+	var envelope struct {
+		Data IngestResponse `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope))
+	return envelope.Data
+}
+
+func TestIngestResponse_IncludesChannelIDAndRequestID(t *testing.T) {
+	channelID := uuid.New().String()
+
+	t.Run("single JSON ingest — channel_id and request_id present", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+		r := buildRouter(h, testSchema)
+
+		svc.On("Ingest", mock.Anything, mock.Anything).Return(nil)
+
+		body, _ := json.Marshal(map[string]any{"fields": map[string]float64{"temp": 22.5}})
+		w := doRequest(r, "POST", "/v1/channels/"+channelID+"/data", body, "application/json")
+
+		require.Equal(t, http.StatusCreated, w.Code)
+		resp := parseIngestResponse(t, w.Body.Bytes())
+		assert.Equal(t, 1, resp.Accepted)
+		assert.Equal(t, channelID, resp.ChannelID)
+		assert.Equal(t, testRequestID, resp.RequestID)
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("bulk JSON ingest — channel_id and request_id present", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+		r := buildRouter(h, testSchema)
+
+		svc.On("IngestBatch", mock.Anything, mock.Anything).Return(nil)
+
+		bulkBody, _ := json.Marshal(map[string]any{
+			"readings": []map[string]any{
+				{"fields": map[string]float64{"temp": 20.0}},
+				{"fields": map[string]float64{"temp": 21.0}},
+			},
+		})
+		w := doRequest(r, "POST", "/v1/channels/"+channelID+"/data/bulk", bulkBody, "application/json")
+
+		require.Equal(t, http.StatusCreated, w.Code)
+		resp := parseIngestResponse(t, w.Body.Bytes())
+		assert.Equal(t, 2, resp.Accepted)
+		assert.Equal(t, channelID, resp.ChannelID)
+		assert.Equal(t, testRequestID, resp.RequestID)
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("compact format ingest (ojson) — channel_id and request_id present", func(t *testing.T) {
+		schema := domain.DeviceSchema{
+			DeviceID:      "dev-uuid-1",
+			ChannelID:     channelID,
+			Fields:        []domain.FieldEntry{{Index: 1, Name: "temperature", Type: "float"}},
+			SchemaVersion: 1,
+		}
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+		r := buildRouter(h, schema)
+
+		svc.On("IngestBatch", mock.Anything, mock.Anything).Return(nil)
+
+		body := []byte(`{"f":[42.5],"sv":1}`)
+		w := doRequest(r, "POST", "/v1/channels/"+channelID+"/data", body, ctOJSON)
+
+		require.Equal(t, http.StatusCreated, w.Code)
+		resp := parseIngestResponse(t, w.Body.Bytes())
+		assert.Equal(t, 1, resp.Accepted)
+		assert.Equal(t, channelID, resp.ChannelID)
+		assert.Equal(t, testRequestID, resp.RequestID)
+		svc.AssertExpectations(t)
 	})
 }
 
