@@ -1,4 +1,4 @@
-.PHONY: all build test coverage lint tidy up down generate-keys mock migrate-all migrate-up migrate-down swagger
+.PHONY: all build test coverage lint tidy up down deploy generate-keys mock migrate-all migrate-up migrate-down swagger
 
 SERVICES := iam device-registry ingestion normalization query-realtime alert-notification supporting
 
@@ -60,6 +60,42 @@ up:
 
 down:
 	docker compose down
+
+# deploy brings up device-registry first, waits for its /health endpoint to return
+# HTTP 200, then starts ingestion. This ordering is required because ingestion calls
+# device-registry's /internal/validate-api-key on every write request; if ingestion
+# starts first it will reject all writes with 503 until device-registry is live.
+#
+# Usage: make deploy
+# Max wait per service: 30 × 2s = 60 seconds before timing out.
+deploy:
+	@echo "==> Starting device-registry..."
+	docker compose up -d device-registry
+	@echo "==> Waiting for device-registry to be healthy (http://localhost:8002/health)..."
+	@retries=30; \
+	while [ $$retries -gt 0 ]; do \
+		if curl -sf http://localhost:8002/health > /dev/null 2>&1; then \
+			echo "    device-registry is healthy"; break; \
+		fi; \
+		echo "    not ready yet ($$retries retries left)..."; \
+		sleep 2; \
+		retries=$$((retries - 1)); \
+	done; \
+	if [ $$retries -eq 0 ]; then echo "ERROR: device-registry did not become healthy in time"; exit 1; fi
+	@echo "==> Starting ingestion..."
+	docker compose up -d ingestion
+	@echo "==> Waiting for ingestion to be healthy (http://localhost:8003/health)..."
+	@retries=30; \
+	while [ $$retries -gt 0 ]; do \
+		if curl -sf http://localhost:8003/health > /dev/null 2>&1; then \
+			echo "    ingestion is healthy"; break; \
+		fi; \
+		echo "    not ready yet ($$retries retries left)..."; \
+		sleep 2; \
+		retries=$$((retries - 1)); \
+	done; \
+	if [ $$retries -eq 0 ]; then echo "ERROR: ingestion did not become healthy in time"; exit 1; fi
+	@echo "==> Deploy complete."
 
 logs:
 	docker compose logs -f
