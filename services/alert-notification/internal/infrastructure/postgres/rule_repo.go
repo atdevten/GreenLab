@@ -131,8 +131,8 @@ func (r *RuleRepo) ListByWorkspace(ctx context.Context, workspaceID uuid.UUID, l
 
 func (r *RuleRepo) Update(ctx context.Context, rule *alert.Rule) error {
 	_, err := r.db.ExecContext(ctx, `
-		UPDATE alert_rules SET name=$1, threshold=$2, severity=$3, message=$4, enabled=$5, cooldown_sec=$6, updated_at=NOW() WHERE id=$7`,
-		rule.Name, rule.Threshold, rule.Severity, rule.Message, rule.Enabled, rule.CooldownSec, rule.ID)
+		UPDATE alert_rules SET name=$1, threshold=$2, severity=$3, message=$4, enabled=$5, cooldown_sec=$6, webhook_secret_hash=$7, updated_at=NOW() WHERE id=$8`,
+		rule.Name, rule.Threshold, rule.Severity, rule.Message, rule.Enabled, rule.CooldownSec, rule.WebhookSecret, rule.ID)
 	return err
 }
 

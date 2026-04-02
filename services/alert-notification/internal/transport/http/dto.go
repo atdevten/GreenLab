@@ -13,6 +13,7 @@ type CreateRuleRequest struct {
 	Severity    string   `json:"severity"     validate:"required"`
 	Message     string   `json:"message"`
 	CooldownSec int      `json:"cooldown_sec"`
+	Secret      string   `json:"secret"` // optional raw HMAC signing key for webhook payloads
 }
 
 type UpdateRuleRequest struct {
@@ -22,6 +23,7 @@ type UpdateRuleRequest struct {
 	Message     string   `json:"message"`
 	Enabled     *bool    `json:"enabled"`
 	CooldownSec *int     `json:"cooldown_sec"`
+	Secret      *string  `json:"secret"` // nil = leave unchanged; pointer to "" = clear the secret
 }
 
 type RuleResponse struct {
@@ -49,6 +51,17 @@ type DeliveryLogResponse struct {
 	ResponseBody string    `json:"response_body"`
 	ErrorMsg     string    `json:"error_msg"`
 	DeliveredAt  time.Time `json:"delivered_at"`
+}
+
+// VerifySignatureRequest is the request body for the sandbox verify-signature endpoint.
+type VerifySignatureRequest struct {
+	Payload   string `json:"payload"   validate:"required"`
+	Signature string `json:"signature" validate:"required"`
+}
+
+// VerifySignatureResponse reports whether the HMAC-SHA256 signature is valid.
+type VerifySignatureResponse struct {
+	Valid bool `json:"valid"`
 }
 
 // Notification DTOs

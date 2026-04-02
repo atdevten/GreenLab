@@ -31,6 +31,7 @@ func NewRouter(alertH *AlertHandler, notifH *NotificationHandler, publicKey inte
 			alertRules.PUT("/:id", alertH.UpdateRule)
 			alertRules.DELETE("/:id", alertH.DeleteRule)
 			alertRules.GET("/:id/deliveries", alertH.ListDeliveries)
+			alertRules.POST("/:id/verify-signature", alertH.VerifySignature)
 		}
 
 		notifications := v1.Group("/notifications")
