@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -163,21 +164,51 @@ func (h *QueryHandler) QueryLatest(c *gin.Context) {
 }
 
 func buildQueryCSV(r *query.QueryResult) ([]byte, error) {
+	// Collect unique field names while preserving first-occurrence order of timestamps.
+	fieldSet := make(map[string]struct{})
+	for _, dp := range r.DataPoints {
+		fieldSet[dp.Field] = struct{}{}
+	}
+	fields := make([]string, 0, len(fieldSet))
+	for f := range fieldSet {
+		fields = append(fields, f)
+	}
+	sort.Strings(fields)
+
+	// Group data points by timestamp, preserving first-occurrence order.
+	type rowKey = string // RFC3339 timestamp string
+	rowOrder := make([]rowKey, 0)
+	rowData := make(map[rowKey]map[string]float64)
+	for _, dp := range r.DataPoints {
+		ts := dp.Timestamp.UTC().Format(time.RFC3339)
+		if _, exists := rowData[ts]; !exists {
+			rowOrder = append(rowOrder, ts)
+			rowData[ts] = make(map[string]float64)
+		}
+		rowData[ts][dp.Field] = dp.Value
+	}
+
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	if err := w.Write([]string{"timestamp", "field", "value"}); err != nil {
+
+	header := append([]string{"timestamp"}, fields...)
+	if err := w.Write(header); err != nil {
 		return nil, fmt.Errorf("buildQueryCSV header: %w", err)
 	}
-	for _, dp := range r.DataPoints {
-		row := []string{
-			dp.Timestamp.UTC().Format(time.RFC3339),
-			dp.Field,
-			fmt.Sprintf("%g", dp.Value),
+
+	for _, ts := range rowOrder {
+		row := make([]string, 1+len(fields))
+		row[0] = ts
+		for i, f := range fields {
+			if v, ok := rowData[ts][f]; ok {
+				row[i+1] = fmt.Sprintf("%g", v)
+			}
 		}
 		if err := w.Write(row); err != nil {
 			return nil, fmt.Errorf("buildQueryCSV row: %w", err)
 		}
 	}
+
 	w.Flush()
 	if err := w.Error(); err != nil {
 		return nil, fmt.Errorf("buildQueryCSV flush: %w", err)

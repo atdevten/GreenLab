@@ -69,7 +69,7 @@ func main() {
 
 	// Channel dependencies
 	channelRepo := infraPostgres.NewChannelRepo(db)
-	channelSvc := application.NewChannelService(channelRepo)
+	channelSvc := application.NewChannelService(channelRepo, slog.Default())
 
 	// Field dependencies
 	fieldRepo := infraPostgres.NewFieldRepo(db)

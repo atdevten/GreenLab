@@ -3,17 +3,19 @@ package application
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/greenlab/device-registry/internal/domain/channel"
 )
 
 type ChannelService struct {
-	repo channel.ChannelRepository
+	repo   channel.ChannelRepository
+	logger *slog.Logger
 }
 
-func NewChannelService(repo channel.ChannelRepository) *ChannelService {
-	return &ChannelService{repo: repo}
+func NewChannelService(repo channel.ChannelRepository, logger *slog.Logger) *ChannelService {
+	return &ChannelService{repo: repo, logger: logger}
 }
 
 type CreateChannelInput struct {
@@ -41,6 +43,7 @@ func (s *ChannelService) CreateChannel(ctx context.Context, in CreateChannelInpu
 		ch.DeviceID = &devID
 	}
 	if err := s.repo.Create(ctx, ch); err != nil {
+		s.logger.ErrorContext(ctx, "CreateChannel: repo.Create failed", "error", err)
 		return nil, fmt.Errorf("CreateChannel.repo.Create: %w", err)
 	}
 	return ch, nil
@@ -51,7 +54,12 @@ func (s *ChannelService) GetChannel(ctx context.Context, id string) (*channel.Ch
 	if err != nil {
 		return nil, fmt.Errorf("GetChannel.ParseID: %w", err)
 	}
-	return s.repo.GetByID(ctx, uid)
+	ch, err := s.repo.GetByID(ctx, uid)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "GetChannel: repo.GetByID failed", "error", err, "id", id)
+		return nil, err
+	}
+	return ch, nil
 }
 
 func (s *ChannelService) ListChannels(ctx context.Context, workspaceID string, limit, offset int) ([]*channel.Channel, int64, error) {
@@ -59,7 +67,12 @@ func (s *ChannelService) ListChannels(ctx context.Context, workspaceID string, l
 	if err != nil {
 		return nil, 0, fmt.Errorf("ListChannels.ParseWorkspaceID: %w", err)
 	}
-	return s.repo.ListByWorkspace(ctx, wsID, limit, offset)
+	channels, total, err := s.repo.ListByWorkspace(ctx, wsID, limit, offset)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "ListChannels: repo.ListByWorkspace failed", "error", err, "workspace_id", workspaceID)
+		return nil, 0, err
+	}
+	return channels, total, nil
 }
 
 func (s *ChannelService) ListChannelsByDevice(ctx context.Context, deviceID string, limit, offset int) ([]*channel.Channel, int64, error) {
@@ -67,7 +80,12 @@ func (s *ChannelService) ListChannelsByDevice(ctx context.Context, deviceID stri
 	if err != nil {
 		return nil, 0, fmt.Errorf("ListChannelsByDevice.ParseDeviceID: %w", err)
 	}
-	return s.repo.ListByDevice(ctx, devID, limit, offset)
+	channels, total, err := s.repo.ListByDevice(ctx, devID, limit, offset)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "ListChannelsByDevice: repo.ListByDevice failed", "error", err, "device_id", deviceID)
+		return nil, 0, err
+	}
+	return channels, total, nil
 }
 
 type UpdateChannelInput struct {
@@ -83,6 +101,7 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, id string, in Update
 	}
 	ch, err := s.repo.GetByID(ctx, uid)
 	if err != nil {
+		s.logger.ErrorContext(ctx, "UpdateChannel: repo.GetByID failed", "error", err, "id", id)
 		return nil, fmt.Errorf("UpdateChannel.GetByID: %w", err)
 	}
 	if in.Name != "" {
@@ -99,6 +118,7 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, id string, in Update
 		}
 	}
 	if err := s.repo.Update(ctx, ch); err != nil {
+		s.logger.ErrorContext(ctx, "UpdateChannel: repo.Update failed", "error", err, "id", id)
 		return nil, fmt.Errorf("UpdateChannel.repo.Update: %w", err)
 	}
 	return ch, nil
@@ -109,5 +129,9 @@ func (s *ChannelService) DeleteChannel(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("DeleteChannel.ParseID: %w", err)
 	}
-	return s.repo.Delete(ctx, uid)
+	if err := s.repo.Delete(ctx, uid); err != nil {
+		s.logger.ErrorContext(ctx, "DeleteChannel: repo.Delete failed", "error", err, "id", id)
+		return err
+	}
+	return nil
 }
