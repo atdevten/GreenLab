@@ -27,6 +27,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/greenlab/device-registry/internal/application"
 	"github.com/greenlab/device-registry/internal/config"
+	infraInfluxDB "github.com/greenlab/device-registry/internal/infrastructure/influxdb"
 	infraPostgres "github.com/greenlab/device-registry/internal/infrastructure/postgres"
 	infraRedis "github.com/greenlab/device-registry/internal/infrastructure/redis"
 	registryHTTP "github.com/greenlab/device-registry/internal/transport/http"
@@ -67,9 +68,15 @@ func main() {
 	deviceCache := infraRedis.NewDeviceCache(rdb)
 	deviceSvc := application.NewDeviceService(deviceRepo, deviceCache, slog.Default())
 
-	// Channel dependencies
+	// Channel & storage dependencies
 	channelRepo := infraPostgres.NewChannelRepo(db)
-	channelSvc := application.NewChannelService(channelRepo, slog.Default())
+	retentionMgr := infraInfluxDB.NewRetentionManager(infraInfluxDB.Config{
+		URL:   cfg.InfluxDB.URL,
+		Token: cfg.InfluxDB.Token,
+		Org:   cfg.InfluxDB.Org,
+	})
+	channelSvc := application.NewChannelService(channelRepo, retentionMgr, slog.Default())
+	storageSvc := application.NewStorageService(retentionMgr)
 
 	// Field dependencies
 	fieldRepo := infraPostgres.NewFieldRepo(db)
@@ -89,7 +96,8 @@ func main() {
 	fieldHandler := registryHTTP.NewFieldHandler(fieldSvc)
 	internalHandler := registryHTTP.NewInternalHandler(internalSvc)
 	provisionHandler := registryHTTP.NewProvisionHandler(provisionSvc)
-	router := registryHTTP.NewRouter(deviceHandler, channelHandler, fieldHandler, internalHandler, provisionHandler, publicKey)
+	adminHandler := registryHTTP.NewAdminHandler(storageSvc)
+	router := registryHTTP.NewRouter(deviceHandler, channelHandler, fieldHandler, internalHandler, provisionHandler, adminHandler, publicKey)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.HTTP.Port,

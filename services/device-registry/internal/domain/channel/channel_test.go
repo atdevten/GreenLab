@@ -62,4 +62,66 @@ func TestNewChannel(t *testing.T) {
 		assert.ErrorIs(t, err, ErrInvalidVisibility)
 		assert.Nil(t, ch)
 	})
+
+	t.Run("default retention days is 90", func(t *testing.T) {
+		ch, err := NewChannel(wsID, "My Channel", "desc", ChannelVisibilityPublic)
+		require.NoError(t, err)
+		assert.Equal(t, DefaultRetentionDays, ch.RetentionDays)
+	})
+}
+
+func TestSetRetentionDays(t *testing.T) {
+	wsID := uuid.New()
+
+	t.Run("valid retention sets value", func(t *testing.T) {
+		ch, err := NewChannel(wsID, "Chan", "", ChannelVisibilityPrivate)
+		require.NoError(t, err)
+
+		err = ch.SetRetentionDays(30)
+		require.NoError(t, err)
+		assert.Equal(t, 30, ch.RetentionDays)
+	})
+
+	t.Run("minimum boundary (1) is valid", func(t *testing.T) {
+		ch, err := NewChannel(wsID, "Chan", "", ChannelVisibilityPrivate)
+		require.NoError(t, err)
+
+		err = ch.SetRetentionDays(MinRetentionDays)
+		require.NoError(t, err)
+		assert.Equal(t, MinRetentionDays, ch.RetentionDays)
+	})
+
+	t.Run("maximum boundary (365) is valid", func(t *testing.T) {
+		ch, err := NewChannel(wsID, "Chan", "", ChannelVisibilityPrivate)
+		require.NoError(t, err)
+
+		err = ch.SetRetentionDays(MaxRetentionDays)
+		require.NoError(t, err)
+		assert.Equal(t, MaxRetentionDays, ch.RetentionDays)
+	})
+
+	t.Run("zero returns invalid retention error", func(t *testing.T) {
+		ch, err := NewChannel(wsID, "Chan", "", ChannelVisibilityPrivate)
+		require.NoError(t, err)
+
+		err = ch.SetRetentionDays(0)
+		assert.ErrorIs(t, err, ErrInvalidRetention)
+		assert.Equal(t, DefaultRetentionDays, ch.RetentionDays) // unchanged
+	})
+
+	t.Run("above maximum returns invalid retention error", func(t *testing.T) {
+		ch, err := NewChannel(wsID, "Chan", "", ChannelVisibilityPrivate)
+		require.NoError(t, err)
+
+		err = ch.SetRetentionDays(366)
+		assert.ErrorIs(t, err, ErrInvalidRetention)
+	})
+
+	t.Run("negative returns invalid retention error", func(t *testing.T) {
+		ch, err := NewChannel(wsID, "Chan", "", ChannelVisibilityPrivate)
+		require.NoError(t, err)
+
+		err = ch.SetRetentionDays(-1)
+		assert.ErrorIs(t, err, ErrInvalidRetention)
+	})
 }

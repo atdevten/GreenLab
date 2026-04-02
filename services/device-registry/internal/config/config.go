@@ -12,6 +12,7 @@ type Config struct {
 	Postgres PostgresConfig
 	Redis    RedisConfig
 	JWT      JWTConfig
+	InfluxDB InfluxDBConfig
 }
 
 type LogConfig struct {
@@ -44,6 +45,12 @@ type JWTConfig struct {
 	PublicKeyPath string
 }
 
+type InfluxDBConfig struct {
+	URL   string
+	Token string
+	Org   string
+}
+
 func Load() Config {
 	return Config{
 		Log: LogConfig{
@@ -70,6 +77,11 @@ func Load() Config {
 		JWT: JWTConfig{
 			Issuer:        env("JWT_ISSUER", "greenlab-identity"),
 			PublicKeyPath: env("JWT_PUBLIC_KEY_PATH", "keys/public.pem"),
+		},
+		InfluxDB: InfluxDBConfig{
+			URL:   env("INFLUXDB_URL", "http://localhost:8086"),
+			Token: env("INFLUXDB_TOKEN", ""),
+			Org:   env("INFLUXDB_ORG", "greenlab"),
 		},
 	}
 }

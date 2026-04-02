@@ -13,45 +13,48 @@ import (
 )
 
 type channelRow struct {
-	ID          uuid.UUID                 `db:"id"`
-	WorkspaceID uuid.UUID                 `db:"workspace_id"`
-	DeviceID    *uuid.UUID                `db:"device_id"`
-	Name        string                    `db:"name"`
-	Description string                    `db:"description"`
-	Visibility  channel.ChannelVisibility `db:"visibility"`
-	Tags        []byte                    `db:"tags"`
-	CreatedAt   time.Time                 `db:"created_at"`
-	UpdatedAt   time.Time                 `db:"updated_at"`
-	DeletedAt   *time.Time                `db:"deleted_at"`
+	ID            uuid.UUID                 `db:"id"`
+	WorkspaceID   uuid.UUID                 `db:"workspace_id"`
+	DeviceID      *uuid.UUID                `db:"device_id"`
+	Name          string                    `db:"name"`
+	Description   string                    `db:"description"`
+	Visibility    channel.ChannelVisibility `db:"visibility"`
+	Tags          []byte                    `db:"tags"`
+	RetentionDays int                       `db:"retention_days"`
+	CreatedAt     time.Time                 `db:"created_at"`
+	UpdatedAt     time.Time                 `db:"updated_at"`
+	DeletedAt     *time.Time                `db:"deleted_at"`
 }
 
 func (r *channelRow) toDomain() *channel.Channel {
 	return &channel.Channel{
-		ID:          r.ID,
-		WorkspaceID: r.WorkspaceID,
-		DeviceID:    r.DeviceID,
-		Name:        r.Name,
-		Description: r.Description,
-		Visibility:  r.Visibility,
-		Tags:        r.Tags,
-		CreatedAt:   r.CreatedAt,
-		UpdatedAt:   r.UpdatedAt,
-		DeletedAt:   r.DeletedAt,
+		ID:            r.ID,
+		WorkspaceID:   r.WorkspaceID,
+		DeviceID:      r.DeviceID,
+		Name:          r.Name,
+		Description:   r.Description,
+		Visibility:    r.Visibility,
+		Tags:          r.Tags,
+		RetentionDays: r.RetentionDays,
+		CreatedAt:     r.CreatedAt,
+		UpdatedAt:     r.UpdatedAt,
+		DeletedAt:     r.DeletedAt,
 	}
 }
 
 func toChannelRow(ch *channel.Channel) *channelRow {
 	return &channelRow{
-		ID:          ch.ID,
-		WorkspaceID: ch.WorkspaceID,
-		DeviceID:    ch.DeviceID,
-		Name:        ch.Name,
-		Description: ch.Description,
-		Visibility:  ch.Visibility,
-		Tags:        ch.Tags,
-		CreatedAt:   ch.CreatedAt,
-		UpdatedAt:   ch.UpdatedAt,
-		DeletedAt:   ch.DeletedAt,
+		ID:            ch.ID,
+		WorkspaceID:   ch.WorkspaceID,
+		DeviceID:      ch.DeviceID,
+		Name:          ch.Name,
+		Description:   ch.Description,
+		Visibility:    ch.Visibility,
+		Tags:          ch.Tags,
+		RetentionDays: ch.RetentionDays,
+		CreatedAt:     ch.CreatedAt,
+		UpdatedAt:     ch.UpdatedAt,
+		DeletedAt:     ch.DeletedAt,
 	}
 }
 
