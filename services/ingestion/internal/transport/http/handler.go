@@ -120,6 +120,7 @@ func (h *Handler) ingestJSON(c *gin.Context, channelID, deviceID string) {
 		return
 	}
 
+	c.Header("X-Recommended-Format", "msgpack")
 	response.Created(c, IngestResponse{
 		Accepted:  1,
 		WrittenAt: time.Now().UTC(),
@@ -155,6 +156,7 @@ func (h *Handler) ingestCompact(c *gin.Context, channelID string, schema domain.
 		return
 	}
 
+	c.Header("X-Recommended-Format", "msgpack")
 	response.Created(c, IngestResponse{
 		Accepted:  len(inputs),
 		WrittenAt: time.Now().UTC(),
@@ -218,6 +220,7 @@ func (h *Handler) BulkIngest(c *gin.Context) {
 		return
 	}
 
+	c.Header("X-Recommended-Format", "msgpack")
 	response.Created(c, IngestResponse{
 		Accepted:  len(req.Readings),
 		WrittenAt: time.Now().UTC(),
