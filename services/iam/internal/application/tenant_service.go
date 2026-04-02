@@ -14,13 +14,24 @@ import (
 )
 
 type TenantService struct {
-	orgRepo    tenant.OrgRepository
-	wsRepo     tenant.WorkspaceRepository
-	apiKeyRepo tenant.APIKeyRepository
+	orgRepo        tenant.OrgRepository
+	wsRepo         tenant.WorkspaceRepository
+	apiKeyRepo     tenant.APIKeyRepository
+	wsAPIKeyRepo   tenant.WorkspaceAPIKeyRepository
 }
 
-func NewTenantService(orgRepo tenant.OrgRepository, wsRepo tenant.WorkspaceRepository, apiKeyRepo tenant.APIKeyRepository) *TenantService {
-	return &TenantService{orgRepo: orgRepo, wsRepo: wsRepo, apiKeyRepo: apiKeyRepo}
+func NewTenantService(
+	orgRepo tenant.OrgRepository,
+	wsRepo tenant.WorkspaceRepository,
+	apiKeyRepo tenant.APIKeyRepository,
+	wsAPIKeyRepo tenant.WorkspaceAPIKeyRepository,
+) *TenantService {
+	return &TenantService{
+		orgRepo:      orgRepo,
+		wsRepo:       wsRepo,
+		apiKeyRepo:   apiKeyRepo,
+		wsAPIKeyRepo: wsAPIKeyRepo,
+	}
 }
 
 type CreateOrgInput struct {
@@ -296,4 +307,55 @@ func (s *TenantService) RevokeAPIKey(ctx context.Context, id, tenantID string) e
 		return fmt.Errorf("RevokeAPIKey: %w", err)
 	}
 	return nil
+}
+
+// --- Workspace API key management ---
+
+// CreateWorkspaceAPIKey generates a scoped API key for a workspace.
+// Returns the domain object and the raw key (shown only once).
+func (s *TenantService) CreateWorkspaceAPIKey(ctx context.Context, workspaceID, name, scope string) (*tenant.WorkspaceAPIKey, string, error) {
+	wsID, err := uuid.Parse(workspaceID)
+	if err != nil {
+		return nil, "", fmt.Errorf("CreateWorkspaceAPIKey.ParseWorkspaceID: %w", err)
+	}
+	if _, err := s.wsRepo.GetByID(ctx, wsID); err != nil {
+		return nil, "", fmt.Errorf("CreateWorkspaceAPIKey.GetWorkspace: %w", err)
+	}
+	key, plainKey, err := tenant.NewWorkspaceAPIKey(wsID, name, scope)
+	if err != nil {
+		return nil, "", fmt.Errorf("CreateWorkspaceAPIKey.New: %w", err)
+	}
+	if err := s.wsAPIKeyRepo.Save(ctx, key); err != nil {
+		return nil, "", fmt.Errorf("CreateWorkspaceAPIKey.Save: %w", err)
+	}
+	return key, plainKey, nil
+}
+
+// RevokeWorkspaceAPIKey soft-deletes a workspace API key by setting revoked_at.
+func (s *TenantService) RevokeWorkspaceAPIKey(ctx context.Context, workspaceID, keyID string) error {
+	wsID, err := uuid.Parse(workspaceID)
+	if err != nil {
+		return fmt.Errorf("RevokeWorkspaceAPIKey.ParseWorkspaceID: %w", err)
+	}
+	kID, err := uuid.Parse(keyID)
+	if err != nil {
+		return fmt.Errorf("RevokeWorkspaceAPIKey.ParseKeyID: %w", err)
+	}
+	if err := s.wsAPIKeyRepo.Revoke(ctx, kID, wsID); err != nil {
+		return fmt.Errorf("RevokeWorkspaceAPIKey.Revoke: %w", err)
+	}
+	return nil
+}
+
+// ListWorkspaceAPIKeys returns the active (non-revoked) API keys for a workspace.
+func (s *TenantService) ListWorkspaceAPIKeys(ctx context.Context, workspaceID string, limit, offset int) ([]*tenant.WorkspaceAPIKey, int64, error) {
+	wsID, err := uuid.Parse(workspaceID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("ListWorkspaceAPIKeys.ParseWorkspaceID: %w", err)
+	}
+	keys, total, err := s.wsAPIKeyRepo.ListByWorkspace(ctx, wsID, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("ListWorkspaceAPIKeys.ListByWorkspace: %w", err)
+	}
+	return keys, total, nil
 }

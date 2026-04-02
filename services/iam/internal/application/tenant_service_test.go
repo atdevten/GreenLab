@@ -17,19 +17,21 @@ func newTestTenantService(t *testing.T) (
 	*mocktenant.MockOrgRepository,
 	*mocktenant.MockWorkspaceRepository,
 	*mocktenant.MockAPIKeyRepository,
+	*mocktenant.MockWorkspaceAPIKeyRepository,
 ) {
 	t.Helper()
 	orgRepo := mocktenant.NewMockOrgRepository(t)
 	wsRepo := mocktenant.NewMockWorkspaceRepository(t)
 	apiKeyRepo := mocktenant.NewMockAPIKeyRepository(t)
-	svc := NewTenantService(orgRepo, wsRepo, apiKeyRepo)
-	return svc, orgRepo, wsRepo, apiKeyRepo
+	wsAPIKeyRepo := mocktenant.NewMockWorkspaceAPIKeyRepository(t)
+	svc := NewTenantService(orgRepo, wsRepo, apiKeyRepo, wsAPIKeyRepo)
+	return svc, orgRepo, wsRepo, apiKeyRepo, wsAPIKeyRepo
 }
 
 // --- Org ---
 
 func TestCreateOrg_Success(t *testing.T) {
-	svc, orgRepo, _, _ := newTestTenantService(t)
+	svc, orgRepo, _, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	ownerID := uuid.New()
@@ -48,7 +50,7 @@ func TestCreateOrg_Success(t *testing.T) {
 }
 
 func TestCreateOrg_SlugAlreadyTaken(t *testing.T) {
-	svc, orgRepo, _, _ := newTestTenantService(t)
+	svc, orgRepo, _, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	existing := &tenant.Org{ID: uuid.New(), Slug: "taken-slug"}
@@ -65,7 +67,7 @@ func TestCreateOrg_SlugAlreadyTaken(t *testing.T) {
 }
 
 func TestCreateOrg_InvalidOwnerUUID(t *testing.T) {
-	svc, _, _, _ := newTestTenantService(t)
+	svc, _, _, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	org, err := svc.CreateOrg(ctx, CreateOrgInput{
@@ -78,7 +80,7 @@ func TestCreateOrg_InvalidOwnerUUID(t *testing.T) {
 }
 
 func TestGetOrg_Success(t *testing.T) {
-	svc, orgRepo, _, _ := newTestTenantService(t)
+	svc, orgRepo, _, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	orgID := uuid.New()
@@ -91,7 +93,7 @@ func TestGetOrg_Success(t *testing.T) {
 }
 
 func TestGetOrg_NotFound(t *testing.T) {
-	svc, orgRepo, _, _ := newTestTenantService(t)
+	svc, orgRepo, _, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	orgID := uuid.New()
@@ -104,7 +106,7 @@ func TestGetOrg_NotFound(t *testing.T) {
 }
 
 func TestListOrgs_Success(t *testing.T) {
-	svc, orgRepo, _, _ := newTestTenantService(t)
+	svc, orgRepo, _, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	orgs := []*tenant.Org{
@@ -120,7 +122,7 @@ func TestListOrgs_Success(t *testing.T) {
 }
 
 func TestUpdateOrg_Success(t *testing.T) {
-	svc, orgRepo, _, _ := newTestTenantService(t)
+	svc, orgRepo, _, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	orgID := uuid.New()
@@ -134,7 +136,7 @@ func TestUpdateOrg_Success(t *testing.T) {
 }
 
 func TestUpdateOrg_NotFound(t *testing.T) {
-	svc, orgRepo, _, _ := newTestTenantService(t)
+	svc, orgRepo, _, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	orgID := uuid.New()
@@ -147,7 +149,7 @@ func TestUpdateOrg_NotFound(t *testing.T) {
 }
 
 func TestDeleteOrg_Success(t *testing.T) {
-	svc, orgRepo, _, _ := newTestTenantService(t)
+	svc, orgRepo, _, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	orgID := uuid.New()
@@ -158,7 +160,7 @@ func TestDeleteOrg_Success(t *testing.T) {
 }
 
 func TestDeleteOrg_InvalidUUID(t *testing.T) {
-	svc, _, _, _ := newTestTenantService(t)
+	svc, _, _, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	err := svc.DeleteOrg(ctx, "not-a-uuid")
@@ -168,7 +170,7 @@ func TestDeleteOrg_InvalidUUID(t *testing.T) {
 // --- Workspace ---
 
 func TestCreateWorkspace_Success(t *testing.T) {
-	svc, orgRepo, wsRepo, _ := newTestTenantService(t)
+	svc, orgRepo, wsRepo, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	orgID := uuid.New()
@@ -189,7 +191,7 @@ func TestCreateWorkspace_Success(t *testing.T) {
 }
 
 func TestCreateWorkspace_OrgNotFound(t *testing.T) {
-	svc, orgRepo, _, _ := newTestTenantService(t)
+	svc, orgRepo, _, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	orgID := uuid.New()
@@ -207,7 +209,7 @@ func TestCreateWorkspace_OrgNotFound(t *testing.T) {
 }
 
 func TestGetWorkspace_Success(t *testing.T) {
-	svc, _, wsRepo, _ := newTestTenantService(t)
+	svc, _, wsRepo, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	wsID := uuid.New()
@@ -220,7 +222,7 @@ func TestGetWorkspace_Success(t *testing.T) {
 }
 
 func TestGetWorkspace_NotFound(t *testing.T) {
-	svc, _, wsRepo, _ := newTestTenantService(t)
+	svc, _, wsRepo, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	wsID := uuid.New()
@@ -232,7 +234,7 @@ func TestGetWorkspace_NotFound(t *testing.T) {
 }
 
 func TestListWorkspaces_Success(t *testing.T) {
-	svc, _, wsRepo, _ := newTestTenantService(t)
+	svc, _, wsRepo, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	orgID := uuid.New()
@@ -248,7 +250,7 @@ func TestListWorkspaces_Success(t *testing.T) {
 }
 
 func TestUpdateWorkspace_Success(t *testing.T) {
-	svc, _, wsRepo, _ := newTestTenantService(t)
+	svc, _, wsRepo, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	wsID := uuid.New()
@@ -262,7 +264,7 @@ func TestUpdateWorkspace_Success(t *testing.T) {
 }
 
 func TestUpdateWorkspace_NotFound(t *testing.T) {
-	svc, _, wsRepo, _ := newTestTenantService(t)
+	svc, _, wsRepo, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	wsID := uuid.New()
@@ -274,7 +276,7 @@ func TestUpdateWorkspace_NotFound(t *testing.T) {
 }
 
 func TestDeleteWorkspace_Success(t *testing.T) {
-	svc, _, wsRepo, _ := newTestTenantService(t)
+	svc, _, wsRepo, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	wsID := uuid.New()
@@ -287,7 +289,7 @@ func TestDeleteWorkspace_Success(t *testing.T) {
 // --- Workspace members ---
 
 func TestListWorkspaceMembers_Success(t *testing.T) {
-	svc, _, wsRepo, _ := newTestTenantService(t)
+	svc, _, wsRepo, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	wsID := uuid.New()
@@ -302,7 +304,7 @@ func TestListWorkspaceMembers_Success(t *testing.T) {
 }
 
 func TestAddWorkspaceMember_Success(t *testing.T) {
-	svc, _, wsRepo, _ := newTestTenantService(t)
+	svc, _, wsRepo, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	wsID := uuid.New()
@@ -314,7 +316,7 @@ func TestAddWorkspaceMember_Success(t *testing.T) {
 }
 
 func TestAddWorkspaceMember_InvalidRole(t *testing.T) {
-	svc, _, _, _ := newTestTenantService(t)
+	svc, _, _, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	err := svc.AddWorkspaceMember(ctx, uuid.New().String(), uuid.New().String(), "superuser")
@@ -323,7 +325,7 @@ func TestAddWorkspaceMember_InvalidRole(t *testing.T) {
 }
 
 func TestUpdateWorkspaceMember_Success(t *testing.T) {
-	svc, _, wsRepo, _ := newTestTenantService(t)
+	svc, _, wsRepo, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	wsID := uuid.New().String()
@@ -335,7 +337,7 @@ func TestUpdateWorkspaceMember_Success(t *testing.T) {
 }
 
 func TestUpdateWorkspaceMember_InvalidRole(t *testing.T) {
-	svc, _, _, _ := newTestTenantService(t)
+	svc, _, _, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	err := svc.UpdateWorkspaceMember(ctx, uuid.New().String(), uuid.New().String(), "invalid")
@@ -344,7 +346,7 @@ func TestUpdateWorkspaceMember_InvalidRole(t *testing.T) {
 }
 
 func TestRemoveWorkspaceMember_Success(t *testing.T) {
-	svc, _, wsRepo, _ := newTestTenantService(t)
+	svc, _, wsRepo, _, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	wsID := uuid.New().String()
@@ -358,7 +360,7 @@ func TestRemoveWorkspaceMember_Success(t *testing.T) {
 // --- API keys ---
 
 func TestListAPIKeys_Success(t *testing.T) {
-	svc, _, _, apiKeyRepo := newTestTenantService(t)
+	svc, _, _, apiKeyRepo, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	tenantID := uuid.New().String()
@@ -373,7 +375,7 @@ func TestListAPIKeys_Success(t *testing.T) {
 }
 
 func TestCreateAPIKey_Success(t *testing.T) {
-	svc, _, _, apiKeyRepo := newTestTenantService(t)
+	svc, _, _, apiKeyRepo, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	tenantID := uuid.New().String()
@@ -389,7 +391,7 @@ func TestCreateAPIKey_Success(t *testing.T) {
 }
 
 func TestRevokeAPIKey_Success(t *testing.T) {
-	svc, _, _, apiKeyRepo := newTestTenantService(t)
+	svc, _, _, apiKeyRepo, _ := newTestTenantService(t)
 	ctx := context.Background()
 
 	keyID := uuid.New().String()
@@ -398,4 +400,131 @@ func TestRevokeAPIKey_Success(t *testing.T) {
 
 	err := svc.RevokeAPIKey(ctx, keyID, tenantID)
 	require.NoError(t, err)
+}
+
+// --- Workspace API keys ---
+
+func TestCreateWorkspaceAPIKey_Success(t *testing.T) {
+	svc, _, wsRepo, _, wsAPIKeyRepo := newTestTenantService(t)
+	ctx := context.Background()
+
+	wsID := uuid.New()
+	ws := &tenant.Workspace{ID: wsID, Name: "My WS"}
+	wsRepo.On("GetByID", ctx, wsID).Return(ws, nil)
+	wsAPIKeyRepo.On("Save", ctx, mock.AnythingOfType("*tenant.WorkspaceAPIKey")).Return(nil)
+
+	key, plainKey, err := svc.CreateWorkspaceAPIKey(ctx, wsID.String(), "dashboard", "read")
+	require.NoError(t, err)
+	assert.NotNil(t, key)
+	assert.True(t, len(plainKey) > 0)
+	assert.Equal(t, "read", key.Scope)
+	assert.Equal(t, "dashboard", key.Name)
+	assert.Equal(t, wsID, key.WorkspaceID)
+}
+
+func TestCreateWorkspaceAPIKey_InvalidScope(t *testing.T) {
+	svc, _, wsRepo, _, _ := newTestTenantService(t)
+	ctx := context.Background()
+
+	wsID := uuid.New()
+	ws := &tenant.Workspace{ID: wsID, Name: "My WS"}
+	wsRepo.On("GetByID", ctx, wsID).Return(ws, nil)
+
+	key, plainKey, err := svc.CreateWorkspaceAPIKey(ctx, wsID.String(), "dashboard", "superadmin")
+	assert.Error(t, err)
+	assert.Nil(t, key)
+	assert.Empty(t, plainKey)
+	assert.ErrorIs(t, err, tenant.ErrInvalidScope)
+}
+
+func TestCreateWorkspaceAPIKey_WorkspaceNotFound(t *testing.T) {
+	svc, _, wsRepo, _, _ := newTestTenantService(t)
+	ctx := context.Background()
+
+	wsID := uuid.New()
+	wsRepo.On("GetByID", ctx, wsID).Return(nil, tenant.ErrWorkspaceNotFound)
+
+	key, plainKey, err := svc.CreateWorkspaceAPIKey(ctx, wsID.String(), "dashboard", "read")
+	assert.Error(t, err)
+	assert.Nil(t, key)
+	assert.Empty(t, plainKey)
+	assert.ErrorIs(t, err, tenant.ErrWorkspaceNotFound)
+}
+
+func TestCreateWorkspaceAPIKey_InvalidWorkspaceUUID(t *testing.T) {
+	svc, _, _, _, _ := newTestTenantService(t)
+	ctx := context.Background()
+
+	key, plainKey, err := svc.CreateWorkspaceAPIKey(ctx, "not-a-uuid", "dashboard", "read")
+	assert.Error(t, err)
+	assert.Nil(t, key)
+	assert.Empty(t, plainKey)
+}
+
+func TestRevokeWorkspaceAPIKey_Success(t *testing.T) {
+	svc, _, _, _, wsAPIKeyRepo := newTestTenantService(t)
+	ctx := context.Background()
+
+	wsID := uuid.New()
+	keyID := uuid.New()
+	wsAPIKeyRepo.On("Revoke", ctx, keyID, wsID).Return(nil)
+
+	err := svc.RevokeWorkspaceAPIKey(ctx, wsID.String(), keyID.String())
+	require.NoError(t, err)
+}
+
+func TestRevokeWorkspaceAPIKey_NotFound(t *testing.T) {
+	svc, _, _, _, wsAPIKeyRepo := newTestTenantService(t)
+	ctx := context.Background()
+
+	wsID := uuid.New()
+	keyID := uuid.New()
+	wsAPIKeyRepo.On("Revoke", ctx, keyID, wsID).Return(tenant.ErrWorkspaceAPIKeyNotFound)
+
+	err := svc.RevokeWorkspaceAPIKey(ctx, wsID.String(), keyID.String())
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, tenant.ErrWorkspaceAPIKeyNotFound)
+}
+
+func TestRevokeWorkspaceAPIKey_InvalidWorkspaceUUID(t *testing.T) {
+	svc, _, _, _, _ := newTestTenantService(t)
+	ctx := context.Background()
+
+	err := svc.RevokeWorkspaceAPIKey(ctx, "not-a-uuid", uuid.New().String())
+	assert.Error(t, err)
+}
+
+func TestRevokeWorkspaceAPIKey_InvalidKeyUUID(t *testing.T) {
+	svc, _, _, _, _ := newTestTenantService(t)
+	ctx := context.Background()
+
+	err := svc.RevokeWorkspaceAPIKey(ctx, uuid.New().String(), "not-a-uuid")
+	assert.Error(t, err)
+}
+
+func TestListWorkspaceAPIKeys_Success(t *testing.T) {
+	svc, _, _, _, wsAPIKeyRepo := newTestTenantService(t)
+	ctx := context.Background()
+
+	wsID := uuid.New()
+	keys := []*tenant.WorkspaceAPIKey{
+		{ID: uuid.New(), WorkspaceID: wsID, Name: "Key 1", Scope: "read"},
+		{ID: uuid.New(), WorkspaceID: wsID, Name: "Key 2", Scope: "write"},
+	}
+	wsAPIKeyRepo.On("ListByWorkspace", ctx, wsID, 10, 0).Return(keys, int64(2), nil)
+
+	result, total, err := svc.ListWorkspaceAPIKeys(ctx, wsID.String(), 10, 0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	assert.Len(t, result, 2)
+}
+
+func TestListWorkspaceAPIKeys_InvalidUUID(t *testing.T) {
+	svc, _, _, _, _ := newTestTenantService(t)
+	ctx := context.Background()
+
+	result, total, err := svc.ListWorkspaceAPIKeys(ctx, "not-a-uuid", 10, 0)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Equal(t, int64(0), total)
 }

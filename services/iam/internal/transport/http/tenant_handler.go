@@ -426,6 +426,95 @@ func (h *TenantHandler) DeleteAPIKey(c *gin.Context) {
 	response.NoContent(c)
 }
 
+// CreateWorkspaceAPIKey godoc
+// @Summary      Create a scoped API key for a workspace
+// @Tags         workspace-api-keys
+// @Accept       json
+// @Produce      json
+// @Param        id       path      string                        true  "Workspace ID"
+// @Param        request  body      CreateWorkspaceAPIKeyRequest  true  "API key details"
+// @Success      201      {object}  CreateWorkspaceAPIKeyResponse
+// @Failure      400      {object}  map[string]interface{}
+// @Failure      404      {object}  map[string]interface{}
+// @Security     BearerAuth
+// @Router       /api/v1/workspaces/{id}/api-keys [post]
+func (h *TenantHandler) CreateWorkspaceAPIKey(c *gin.Context) {
+	var req CreateWorkspaceAPIKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apierr.BadRequest(err.Error()))
+		return
+	}
+	if err := validator.Validate(&req); err != nil {
+		response.ValidationError(c, err)
+		return
+	}
+	key, plainKey, err := h.svc.CreateWorkspaceAPIKey(c.Request.Context(), c.Param("id"), req.Name, req.Scope)
+	if err != nil {
+		response.Error(c, mapTenantError(err))
+		return
+	}
+	resp := CreateWorkspaceAPIKeyResponse{
+		WorkspaceAPIKeyResponse: toWorkspaceAPIKeyResponse(key),
+		Key:                     plainKey,
+	}
+	response.Created(c, resp)
+}
+
+// DeleteWorkspaceAPIKey godoc
+// @Summary      Revoke a workspace API key
+// @Tags         workspace-api-keys
+// @Param        id      path  string  true  "Workspace ID"
+// @Param        key_id  path  string  true  "API Key ID"
+// @Success      204  "No Content"
+// @Failure      404  {object}  map[string]interface{}
+// @Security     BearerAuth
+// @Router       /api/v1/workspaces/{id}/api-keys/{key_id} [delete]
+func (h *TenantHandler) DeleteWorkspaceAPIKey(c *gin.Context) {
+	if err := h.svc.RevokeWorkspaceAPIKey(c.Request.Context(), c.Param("id"), c.Param("key_id")); err != nil {
+		response.Error(c, mapTenantError(err))
+		return
+	}
+	response.NoContent(c)
+}
+
+// ListWorkspaceAPIKeys godoc
+// @Summary      List API keys for a workspace
+// @Tags         workspace-api-keys
+// @Produce      json
+// @Param        id      path   string  true   "Workspace ID"
+// @Param        limit   query  int     false  "Page size"
+// @Param        offset  query  int     false  "Page offset"
+// @Success      200  {array}   WorkspaceAPIKeyResponse
+// @Failure      404  {object}  map[string]interface{}
+// @Security     BearerAuth
+// @Router       /api/v1/workspaces/{id}/api-keys [get]
+func (h *TenantHandler) ListWorkspaceAPIKeys(c *gin.Context) {
+	page := pagination.ParseOffset(c)
+	keys, total, err := h.svc.ListWorkspaceAPIKeys(c.Request.Context(), c.Param("id"), page.Limit, page.Offset())
+	if err != nil {
+		response.Error(c, mapTenantError(err))
+		return
+	}
+	items := make([]*WorkspaceAPIKeyResponse, len(keys))
+	for i, k := range keys {
+		r := toWorkspaceAPIKeyResponse(k)
+		items[i] = &r
+	}
+	response.OKWithMeta(c, items, pagination.NewOffsetResult(items, total, page))
+}
+
+func toWorkspaceAPIKeyResponse(k *tenant.WorkspaceAPIKey) WorkspaceAPIKeyResponse {
+	return WorkspaceAPIKeyResponse{
+		ID:          k.ID.String(),
+		WorkspaceID: k.WorkspaceID.String(),
+		Name:        k.Name,
+		Scope:       k.Scope,
+		KeyPrefix:   k.KeyPrefix,
+		CreatedAt:   k.CreatedAt,
+		LastUsedAt:  k.LastUsedAt,
+	}
+}
+
 func toOrgResponse(o *tenant.Org) *OrgResponse {
 	return &OrgResponse{
 		ID: o.ID.String(), Name: o.Name, Slug: o.Slug, Plan: string(o.Plan),
@@ -484,6 +573,10 @@ func mapTenantError(err error) error {
 		return apierr.BadRequest(err.Error())
 	case errors.Is(err, tenant.ErrAPIKeyNotFound):
 		return apierr.NotFound("api key")
+	case errors.Is(err, tenant.ErrWorkspaceAPIKeyNotFound):
+		return apierr.NotFound("workspace api key")
+	case errors.Is(err, tenant.ErrInvalidScope):
+		return apierr.BadRequest(err.Error())
 	default:
 		return apierr.Internal(err)
 	}

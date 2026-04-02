@@ -77,6 +77,9 @@ func NewRouter(authH *AuthHandler, tenantH *TenantHandler, publicKey *rsa.Public
 				ws.POST("/:id/members", tenantH.AddMember)
 				ws.PUT("/:id/members/:userId", tenantH.UpdateMember)
 				ws.DELETE("/:id/members/:userId", tenantH.RemoveMember)
+				ws.GET("/:id/api-keys", tenantH.ListWorkspaceAPIKeys)
+				ws.POST("/:id/api-keys", tenantH.CreateWorkspaceAPIKey)
+				ws.DELETE("/:id/api-keys/:key_id", tenantH.DeleteWorkspaceAPIKey)
 			}
 			apiKeys := tenantGroup.Group("/api-keys")
 			{
