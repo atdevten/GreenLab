@@ -15,18 +15,25 @@ const (
 	ChannelVisibilityPrivate ChannelVisibility = "private"
 )
 
+const (
+	DefaultRetentionDays = 90
+	MinRetentionDays     = 1
+	MaxRetentionDays     = 365
+)
+
 // Channel aggregates fields for IoT data collection.
 type Channel struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	DeviceID    *uuid.UUID
-	Name        string
-	Description string
-	Visibility  ChannelVisibility
-	Tags        []byte // JSONB string array
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	DeletedAt   *time.Time
+	ID            uuid.UUID
+	WorkspaceID   uuid.UUID
+	DeviceID      *uuid.UUID
+	Name          string
+	Description   string
+	Visibility    ChannelVisibility
+	Tags          []byte // JSONB string array
+	RetentionDays int
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	DeletedAt     *time.Time
 }
 
 // SoftDelete marks the channel as deleted.
@@ -68,6 +75,16 @@ func (ch *Channel) SetVisibility(v ChannelVisibility) error {
 	return nil
 }
 
+// SetRetentionDays validates and sets the retention period in days.
+func (ch *Channel) SetRetentionDays(days int) error {
+	if days < MinRetentionDays || days > MaxRetentionDays {
+		return ErrInvalidRetention
+	}
+	ch.RetentionDays = days
+	ch.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
 // NewChannel creates a new Channel with validation.
 func NewChannel(workspaceID uuid.UUID, name, description string, visibility ChannelVisibility) (*Channel, error) {
 	if strings.TrimSpace(name) == "" {
@@ -81,13 +98,14 @@ func NewChannel(workspaceID uuid.UUID, name, description string, visibility Chan
 	}
 	now := time.Now().UTC()
 	return &Channel{
-		ID:          uuid.New(),
-		WorkspaceID: workspaceID,
-		Name:        name,
-		Description: description,
-		Visibility:  visibility,
-		Tags:        []byte("[]"),
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:            uuid.New(),
+		WorkspaceID:   workspaceID,
+		Name:          name,
+		Description:   description,
+		Visibility:    visibility,
+		Tags:          []byte("[]"),
+		RetentionDays: DefaultRetentionDays,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}, nil
 }

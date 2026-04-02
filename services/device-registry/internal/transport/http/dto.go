@@ -66,28 +66,31 @@ type DeviceResponse struct {
 
 // Channel DTOs
 type CreateChannelRequest struct {
-	WorkspaceID string  `json:"workspace_id" validate:"required"`
-	DeviceID    *string `json:"device_id"`
-	Name        string  `json:"name"         validate:"required"`
-	Description string  `json:"description"`
-	Visibility  string  `json:"visibility"`
+	WorkspaceID   string  `json:"workspace_id"   validate:"required"`
+	DeviceID      *string `json:"device_id"`
+	Name          string  `json:"name"           validate:"required"`
+	Description   string  `json:"description"`
+	Visibility    string  `json:"visibility"`
+	RetentionDays int     `json:"retention_days"`
 }
 
 type UpdateChannelRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Visibility  string `json:"visibility"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	Visibility    string `json:"visibility"`
+	RetentionDays int    `json:"retention_days"`
 }
 
 type ChannelResponse struct {
-	ID          string     `json:"id"`
-	WorkspaceID string     `json:"workspace_id"`
-	DeviceID    *string    `json:"device_id,omitempty"`
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	Visibility  string     `json:"visibility"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID            string    `json:"id"`
+	WorkspaceID   string    `json:"workspace_id"`
+	DeviceID      *string   `json:"device_id,omitempty"`
+	Name          string    `json:"name"`
+	Description   string    `json:"description"`
+	Visibility    string    `json:"visibility"`
+	RetentionDays int       `json:"retention_days"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // Field DTOs

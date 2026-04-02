@@ -19,7 +19,7 @@ func securityHeaders() gin.HandlerFunc {
 	}
 }
 
-func NewRouter(deviceH *DeviceHandler, channelH *ChannelHandler, fieldH *FieldHandler, internalH *InternalHandler, provisionH *ProvisionHandler, publicKey *rsa.PublicKey) *gin.Engine {
+func NewRouter(deviceH *DeviceHandler, channelH *ChannelHandler, fieldH *FieldHandler, internalH *InternalHandler, provisionH *ProvisionHandler, adminH *AdminHandler, publicKey *rsa.PublicKey) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(sharedMiddleware.RequestID())
@@ -62,6 +62,11 @@ func NewRouter(deviceH *DeviceHandler, channelH *ChannelHandler, fieldH *FieldHa
 			fields.GET("/:id", fieldH.GetField)
 			fields.PUT("/:id", fieldH.UpdateField)
 			fields.DELETE("/:id", fieldH.DeleteField)
+		}
+
+		admin := v1.Group("/admin")
+		{
+			admin.GET("/storage/usage", adminH.GetStorageUsage)
 		}
 	}
 	internal := r.Group("/internal")

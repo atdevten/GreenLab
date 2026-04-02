@@ -34,7 +34,9 @@ func mapChannelError(err error) error {
 	switch {
 	case errors.Is(err, channel.ErrChannelNotFound):
 		return apierr.NotFound("channel")
-	case errors.Is(err, channel.ErrInvalidName), errors.Is(err, channel.ErrInvalidVisibility):
+	case errors.Is(err, channel.ErrInvalidName),
+		errors.Is(err, channel.ErrInvalidVisibility),
+		errors.Is(err, channel.ErrInvalidRetention):
 		return apierr.BadRequest(err.Error())
 	default:
 		return apierr.Internal(err)
@@ -62,11 +64,12 @@ func (h *ChannelHandler) CreateChannel(c *gin.Context) {
 		return
 	}
 	ch, err := h.svc.CreateChannel(c.Request.Context(), application.CreateChannelInput{
-		WorkspaceID: req.WorkspaceID,
-		DeviceID:    req.DeviceID,
-		Name:        req.Name,
-		Description: req.Description,
-		Visibility:  req.Visibility,
+		WorkspaceID:   req.WorkspaceID,
+		DeviceID:      req.DeviceID,
+		Name:          req.Name,
+		Description:   req.Description,
+		Visibility:    req.Visibility,
+		RetentionDays: req.RetentionDays,
 	})
 	if err != nil {
 		response.Error(c, mapChannelError(err))
@@ -160,6 +163,7 @@ func (h *ChannelHandler) UpdateChannel(c *gin.Context) {
 	}
 	ch, err := h.svc.UpdateChannel(c.Request.Context(), c.Param("id"), application.UpdateChannelInput{
 		Name: req.Name, Description: req.Description, Visibility: req.Visibility,
+		RetentionDays: req.RetentionDays,
 	})
 	if err != nil {
 		response.Error(c, mapChannelError(err))
@@ -188,8 +192,9 @@ func toChannelResponse(ch *channel.Channel) *ChannelResponse {
 	r := &ChannelResponse{
 		ID: ch.ID.String(), WorkspaceID: ch.WorkspaceID.String(),
 		Name: ch.Name, Description: ch.Description,
-		Visibility: string(ch.Visibility),
-		CreatedAt:  ch.CreatedAt, UpdatedAt: ch.UpdatedAt,
+		Visibility:    string(ch.Visibility),
+		RetentionDays: ch.RetentionDays,
+		CreatedAt:     ch.CreatedAt, UpdatedAt: ch.UpdatedAt,
 	}
 	if ch.DeviceID != nil {
 		s := ch.DeviceID.String()
