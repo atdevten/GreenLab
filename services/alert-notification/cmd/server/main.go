@@ -71,6 +71,7 @@ func main() {
 
 	// Alert dependencies
 	ruleRepo := infraPostgres.NewRuleRepo(db)
+	deliveryRepo := infraPostgres.NewDeliveryRepo(db)
 	alertProducer := infraKafka.NewAlertProducer(cfg.Kafka.Brokers)
 	defer func() {
 		if err := alertProducer.Close(); err != nil {
@@ -79,7 +80,7 @@ func main() {
 	}()
 
 	engine := application.NewRuleEngine(ruleRepo, alertProducer, slog.Default())
-	alertSvc := application.NewAlertService(ruleRepo, alertProducer, slog.Default())
+	alertSvc := application.NewAlertService(ruleRepo, alertProducer, deliveryRepo, slog.Default())
 
 	// Notification dependencies
 	emailSender := infraEmail.NewSMTPSender(infraEmail.Config{
@@ -90,7 +91,7 @@ func main() {
 		From:     cfg.SMTP.From,
 	})
 	webhookClient := infraWebhook.NewClient()
-	dispatcher := application.NewDispatcher(emailSender, webhookClient)
+	dispatcher := application.NewDispatcher(emailSender, webhookClient, deliveryRepo, slog.Default())
 
 	notifRepo := infraPostgres.NewNotificationRepo(db)
 	notifSvc := application.NewNotificationService(notifRepo, dispatcher, slog.Default(), cfg.SMTP.FallbackRecipient)

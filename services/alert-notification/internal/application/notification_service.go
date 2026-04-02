@@ -121,6 +121,8 @@ func (s *NotificationService) SendAlertNotification(ctx context.Context, evt *al
 		evt.Severity, evt.FieldName, evt.Condition, evt.Threshold, evt.ActualValue)
 
 	n := notification.NewNotification(evt.WorkspaceID, notification.ChannelTypeEmail, s.fallbackRecipient, subject, string(body))
+	n.RuleID = &evt.RuleID
+	n.WebhookSecret = evt.WebhookSecret
 
 	if err := s.repo.Save(ctx, n); err != nil {
 		return err

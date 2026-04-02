@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/greenlab/alert-notification/internal/domain/alert"
+	"github.com/greenlab/alert-notification/internal/domain/delivery"
 )
 
 // AlertPublisher publishes alert events to an event bus.
@@ -16,27 +17,29 @@ type AlertPublisher interface {
 
 // AlertService manages alert rules.
 type AlertService struct {
-	repo      alert.RuleRepository
-	publisher AlertPublisher
-	logger    *slog.Logger
+	repo         alert.RuleRepository
+	publisher    AlertPublisher
+	deliveryRepo delivery.Repository
+	logger       *slog.Logger
 }
 
 // NewAlertService creates a new AlertService.
-func NewAlertService(repo alert.RuleRepository, publisher AlertPublisher, logger *slog.Logger) *AlertService {
-	return &AlertService{repo: repo, publisher: publisher, logger: logger}
+func NewAlertService(repo alert.RuleRepository, publisher AlertPublisher, deliveryRepo delivery.Repository, logger *slog.Logger) *AlertService {
+	return &AlertService{repo: repo, publisher: publisher, deliveryRepo: deliveryRepo, logger: logger}
 }
 
 // CreateRuleInput holds the fields needed to create a new alert rule.
 type CreateRuleInput struct {
-	ChannelID   string
-	WorkspaceID string
-	Name        string
-	FieldName   string
-	Condition   string
-	Threshold   float64
-	Severity    string
-	Message     string
-	CooldownSec int
+	ChannelID     string
+	WorkspaceID   string
+	Name          string
+	FieldName     string
+	Condition     string
+	Threshold     float64
+	Severity      string
+	Message       string
+	CooldownSec   int
+	WebhookSecret string // optional raw HMAC signing key
 }
 
 // CreateRule validates the input and persists a new alert rule.
@@ -55,6 +58,7 @@ func (s *AlertService) CreateRule(ctx context.Context, in CreateRuleInput) (*ale
 	if in.CooldownSec > 0 {
 		rule.CooldownSec = in.CooldownSec
 	}
+	rule.WebhookSecret = in.WebhookSecret
 	if err := s.repo.Create(ctx, rule); err != nil {
 		return nil, err
 	}
@@ -81,12 +85,13 @@ func (s *AlertService) ListRules(ctx context.Context, workspaceID string, limit,
 
 // UpdateRuleInput holds the optional fields for a partial rule update.
 type UpdateRuleInput struct {
-	Name        string
-	Threshold   *float64
-	Severity    string
-	Message     string
-	Enabled     *bool
-	CooldownSec *int
+	Name          string
+	Threshold     *float64
+	Severity      string
+	Message       string
+	Enabled       *bool
+	CooldownSec   *int
+	WebhookSecret *string // nil = leave unchanged; pointer to empty string = clear the secret
 }
 
 // UpdateRule applies a partial update to an existing rule.
@@ -117,6 +122,9 @@ func (s *AlertService) UpdateRule(ctx context.Context, id string, in UpdateRuleI
 	if in.CooldownSec != nil {
 		rule.CooldownSec = *in.CooldownSec
 	}
+	if in.WebhookSecret != nil {
+		rule.WebhookSecret = *in.WebhookSecret
+	}
 	rule.UpdatedAt = time.Now().UTC()
 	if err := s.repo.Update(ctx, rule); err != nil {
 		return nil, err
@@ -131,4 +139,13 @@ func (s *AlertService) DeleteRule(ctx context.Context, id string) error {
 		return alert.ErrInvalidRuleID
 	}
 	return s.repo.Delete(ctx, uid)
+}
+
+// ListDeliveries returns paginated webhook delivery logs for a rule.
+func (s *AlertService) ListDeliveries(ctx context.Context, ruleID string, limit, offset int) ([]*delivery.Log, int64, error) {
+	uid, err := uuid.Parse(ruleID)
+	if err != nil {
+		return nil, 0, alert.ErrInvalidRuleID
+	}
+	return s.deliveryRepo.ListByRule(ctx, uid, limit, offset)
 }

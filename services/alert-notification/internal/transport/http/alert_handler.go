@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/greenlab/alert-notification/internal/application"
 	"github.com/greenlab/alert-notification/internal/domain/alert"
+	"github.com/greenlab/alert-notification/internal/domain/delivery"
 	"github.com/greenlab/shared/pkg/apierr"
 	"github.com/greenlab/shared/pkg/pagination"
 	"github.com/greenlab/shared/pkg/response"
@@ -21,6 +22,7 @@ type alertService interface {
 	ListRules(ctx context.Context, workspaceID string, limit, offset int) ([]*alert.Rule, int64, error)
 	UpdateRule(ctx context.Context, id string, in application.UpdateRuleInput) (*alert.Rule, error)
 	DeleteRule(ctx context.Context, id string) error
+	ListDeliveries(ctx context.Context, ruleID string, limit, offset int) ([]*delivery.Log, int64, error)
 }
 
 // AlertHandler handles HTTP requests for alert rules.
@@ -198,12 +200,56 @@ func (h *AlertHandler) DeleteRule(c *gin.Context) {
 	response.NoContent(c)
 }
 
+// ListDeliveries godoc
+// @Summary      List webhook delivery logs for an alert rule
+// @Tags         alert-rules
+// @Produce      json
+// @Param        id      path      string  true   "Rule ID"
+// @Param        limit   query     int     false  "Page size"
+// @Param        offset  query     int     false  "Page offset"
+// @Success      200     {array}   DeliveryLogResponse
+// @Failure      400     {object}  map[string]interface{}
+// @Failure      404     {object}  map[string]interface{}
+// @Security     BearerAuth
+// @Router       /api/v1/alert-rules/{id}/deliveries [get]
+func (h *AlertHandler) ListDeliveries(c *gin.Context) {
+	page := pagination.ParseOffset(c)
+	logs, total, err := h.svc.ListDeliveries(c.Request.Context(), c.Param("id"), page.Limit, page.Offset())
+	if err != nil {
+		if errors.Is(err, alert.ErrInvalidRuleID) {
+			response.Error(c, apierr.BadRequest(err.Error()))
+			return
+		}
+		h.logger.Error("list deliveries failed", "rule_id", c.Param("id"), "error", err)
+		response.Error(c, apierr.ErrInternalServerError)
+		return
+	}
+	items := make([]*DeliveryLogResponse, len(logs))
+	for i, l := range logs {
+		items[i] = toDeliveryLogResponse(l)
+	}
+	response.OKWithMeta(c, items, pagination.NewOffsetResult(items, total, page))
+}
+
 // isAlertValidationError reports whether err is a domain-level input error
 // that should map to 400 Bad Request.
 func isAlertValidationError(err error) bool {
 	return errors.Is(err, alert.ErrInvalidChannelID) ||
 		errors.Is(err, alert.ErrInvalidWorkspace) ||
 		errors.Is(err, alert.ErrInvalidRuleID)
+}
+
+func toDeliveryLogResponse(l *delivery.Log) *DeliveryLogResponse {
+	return &DeliveryLogResponse{
+		ID:           l.ID.String(),
+		RuleID:       l.RuleID.String(),
+		URL:          l.URL,
+		HTTPStatus:   l.HTTPStatus,
+		LatencyMS:    l.LatencyMS,
+		ResponseBody: l.ResponseBody,
+		ErrorMsg:     l.ErrorMsg,
+		DeliveredAt:  l.DeliveredAt,
+	}
 }
 
 func toRuleResponse(r *alert.Rule) *RuleResponse {

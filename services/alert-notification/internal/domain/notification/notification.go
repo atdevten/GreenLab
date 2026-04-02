@@ -26,20 +26,22 @@ const (
 
 // Notification is a queued notification to be delivered.
 type Notification struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	ChannelType NotificationChannelType
-	Recipient   string
-	Subject     string
-	Body        string
-	Status      NotificationStatus
-	Retries     int
-	SentAt      *time.Time
-	ErrorMsg    string
-	Read        bool
-	ReadAt      *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID            uuid.UUID
+	WorkspaceID   uuid.UUID
+	RuleID        *uuid.UUID
+	ChannelType   NotificationChannelType
+	Recipient     string
+	Subject       string
+	Body          string
+	Status        NotificationStatus
+	Retries       int
+	SentAt        *time.Time
+	ErrorMsg      string
+	Read          bool
+	ReadAt        *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	WebhookSecret string // raw HMAC key for signing webhook payloads; not persisted
 }
 
 // NewNotification creates a new Notification entity.
