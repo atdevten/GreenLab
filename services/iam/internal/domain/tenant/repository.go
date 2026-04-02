@@ -32,3 +32,10 @@ type APIKeyRepository interface {
 	CreateAPIKey(ctx context.Context, key APIKey) error
 	DeleteAPIKey(ctx context.Context, id, tenantID string) error
 }
+
+type WorkspaceAPIKeyRepository interface {
+	Save(ctx context.Context, key *WorkspaceAPIKey) error
+	GetByPrefix(ctx context.Context, keyPrefix string) (*WorkspaceAPIKey, error)
+	ListByWorkspace(ctx context.Context, workspaceID uuid.UUID, limit, offset int) ([]*WorkspaceAPIKey, int64, error)
+	Revoke(ctx context.Context, id, workspaceID uuid.UUID) error
+}

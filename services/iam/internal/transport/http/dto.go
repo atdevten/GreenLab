@@ -155,6 +155,28 @@ type CreateAPIKeyResponse struct {
 	Key string `json:"key"`
 }
 
+// Workspace API key DTOs
+
+type CreateWorkspaceAPIKeyRequest struct {
+	Name  string `json:"name"  validate:"required"`
+	Scope string `json:"scope" validate:"required"`
+}
+
+type WorkspaceAPIKeyResponse struct {
+	ID          string     `json:"id"`
+	WorkspaceID string     `json:"workspace_id"`
+	Name        string     `json:"name"`
+	Scope       string     `json:"scope"`
+	KeyPrefix   string     `json:"key_prefix"`
+	CreatedAt   time.Time  `json:"created_at"`
+	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
+}
+
+type CreateWorkspaceAPIKeyResponse struct {
+	WorkspaceAPIKeyResponse
+	Key string `json:"key"`
+}
+
 type SignupRequest struct {
 	Email    string `json:"email"    validate:"required"`
 	Password string `json:"password" validate:"required"`

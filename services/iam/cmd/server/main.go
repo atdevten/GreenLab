@@ -73,6 +73,7 @@ func main() {
 	orgRepo := infraPostgres.NewOrgRepo(db)
 	wsRepo := infraPostgres.NewWorkspaceRepo(db)
 	apiKeyRepo := infraPostgres.NewAPIKeyRepo(db)
+	wsAPIKeyRepo := infraPostgres.NewWorkspaceAPIKeyRepo(db)
 
 	authSvc := application.NewAuthService(
 		userRepo, tokenRepo, cache, producer,
@@ -81,7 +82,7 @@ func main() {
 		cfg.JWT.Issuer,
 	)
 
-	tenantSvc := application.NewTenantService(orgRepo, wsRepo, apiKeyRepo)
+	tenantSvc := application.NewTenantService(orgRepo, wsRepo, apiKeyRepo, wsAPIKeyRepo)
 
 	// Handlers & router
 	authHandler := identityHTTP.NewAuthHandler(authSvc)
