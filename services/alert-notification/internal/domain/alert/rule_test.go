@@ -7,6 +7,53 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestHashSecret(t *testing.T) {
+	h1 := HashSecret("mysecret")
+	h2 := HashSecret("mysecret")
+	h3 := HashSecret("other")
+
+	assert.Len(t, h1, 64, "SHA-256 hex digest is 64 chars")
+	assert.Equal(t, h1, h2, "same input produces same hash")
+	assert.NotEqual(t, h1, h3, "different inputs produce different hashes")
+}
+
+func TestComputeHMAC(t *testing.T) {
+	sig := ComputeHMAC("secret", `{"field":"value"}`)
+	assert.Len(t, sig, 64, "HMAC-SHA256 hex is 64 chars")
+	assert.Equal(t, sig, ComputeHMAC("secret", `{"field":"value"}`), "deterministic")
+	assert.NotEqual(t, sig, ComputeHMAC("other", `{"field":"value"}`), "different key differs")
+	assert.NotEqual(t, sig, ComputeHMAC("secret", `{"field":"other"}`), "different payload differs")
+}
+
+func TestValidateHMAC(t *testing.T) {
+	secret := "my-signing-key"
+	payload := `{"sensor":"temp","value":42}`
+	mac := ComputeHMAC(secret, payload)
+	sig := "sha256=" + mac
+
+	tests := []struct {
+		name      string
+		secret    string
+		payload   string
+		signature string
+		want      bool
+	}{
+		{"valid signature", secret, payload, sig, true},
+		{"wrong secret", "wrong-key", payload, sig, false},
+		{"wrong payload", secret, `{"sensor":"temp","value":99}`, sig, false},
+		{"wrong prefix", secret, payload, "hmac=" + mac, false},
+		{"empty signature", secret, payload, "", false},
+		{"empty secret", "", payload, sig, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ValidateHMAC(tc.secret, tc.payload, tc.signature)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
 func TestNewRule(t *testing.T) {
 	chID := uuid.New()
 	wsID := uuid.New()

@@ -149,3 +149,21 @@ func (s *AlertService) ListDeliveries(ctx context.Context, ruleID string, limit,
 	}
 	return s.deliveryRepo.ListByRule(ctx, uid, limit, offset)
 }
+
+// VerifyWebhookSignature fetches the rule, then reports whether the provided
+// signature matches HMAC-SHA256(rule.WebhookSecret, payload).
+// Returns ErrNoWebhookSecret when the rule has no secret configured.
+func (s *AlertService) VerifyWebhookSignature(ctx context.Context, id, payload, signature string) (bool, error) {
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return false, alert.ErrInvalidRuleID
+	}
+	rule, err := s.repo.GetByID(ctx, uid)
+	if err != nil {
+		return false, err
+	}
+	if rule.WebhookSecret == "" {
+		return false, alert.ErrNoWebhookSecret
+	}
+	return alert.ValidateHMAC(rule.WebhookSecret, payload, signature), nil
+}

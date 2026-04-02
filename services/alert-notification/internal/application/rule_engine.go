@@ -101,17 +101,18 @@ func (e *RuleEngine) Evaluate(ctx context.Context, evt TelemetryEvent) {
 		e.mu.Unlock()
 
 		alertEvt := &alert.AlertEvent{
-			ID:          uuid.New(),
-			RuleID:      rule.ID,
-			ChannelID:   rule.ChannelID,
-			WorkspaceID: rule.WorkspaceID,
-			FieldName:   rule.FieldName,
-			ActualValue: value,
-			Threshold:   rule.Threshold,
-			Condition:   rule.Condition,
-			Severity:    rule.Severity,
-			Message:     rule.Message,
-			TriggeredAt: evt.Timestamp,
+			ID:            uuid.New(),
+			RuleID:        rule.ID,
+			ChannelID:     rule.ChannelID,
+			WorkspaceID:   rule.WorkspaceID,
+			FieldName:     rule.FieldName,
+			ActualValue:   value,
+			Threshold:     rule.Threshold,
+			Condition:     rule.Condition,
+			Severity:      rule.Severity,
+			Message:       rule.Message,
+			TriggeredAt:   evt.Timestamp,
+			WebhookSecret: rule.WebhookSecret,
 		}
 
 		if err := e.publisher.PublishAlert(ctx, alertEvt); err != nil {

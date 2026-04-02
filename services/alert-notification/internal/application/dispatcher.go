@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/greenlab/alert-notification/internal/domain/alert"
 	"github.com/greenlab/alert-notification/internal/domain/delivery"
 	"github.com/greenlab/alert-notification/internal/domain/notification"
 )
@@ -19,15 +20,17 @@ type EmailSender interface {
 // WebhookClient defines the contract for webhook delivery.
 type WebhookClient interface {
 	Post(ctx context.Context, url, payload string) error
-	PostDetailed(ctx context.Context, url, payload string) (httpStatus int, responseBody string, latencyMS int64, err error)
+	// PostDetailed sends payload and optionally attaches an X-GreenLab-Signature header when
+	// hmacSignature is non-empty (caller is responsible for formatting, e.g. "sha256=<hex>").
+	PostDetailed(ctx context.Context, url, payload, hmacSignature string) (httpStatus int, responseBody string, latencyMS int64, err error)
 }
 
 // Dispatcher routes notifications to the correct delivery channel.
 type Dispatcher struct {
-	emailSender    EmailSender
-	webhookClient  WebhookClient
-	deliveryRepo   delivery.Repository
-	logger         *slog.Logger
+	emailSender   EmailSender
+	webhookClient WebhookClient
+	deliveryRepo  delivery.Repository
+	logger        *slog.Logger
 }
 
 // NewDispatcher creates a new Dispatcher.
@@ -55,7 +58,12 @@ func (d *Dispatcher) Dispatch(ctx context.Context, n *notification.Notification)
 }
 
 func (d *Dispatcher) dispatchWebhook(ctx context.Context, n *notification.Notification) error {
-	httpStatus, respBody, latencyMS, err := d.webhookClient.PostDetailed(ctx, n.Recipient, n.Body)
+	var sig string
+	if n.WebhookSecret != "" {
+		sig = "sha256=" + alert.ComputeHMAC(n.WebhookSecret, n.Body)
+	}
+
+	httpStatus, respBody, latencyMS, err := d.webhookClient.PostDetailed(ctx, n.Recipient, n.Body, sig)
 
 	if n.RuleID != nil {
 		d.saveDeliveryLog(ctx, n.RuleID, n.Recipient, httpStatus, respBody, latencyMS, err)

@@ -23,6 +23,7 @@ type alertService interface {
 	UpdateRule(ctx context.Context, id string, in application.UpdateRuleInput) (*alert.Rule, error)
 	DeleteRule(ctx context.Context, id string) error
 	ListDeliveries(ctx context.Context, ruleID string, limit, offset int) ([]*delivery.Log, int64, error)
+	VerifyWebhookSignature(ctx context.Context, id, payload, signature string) (bool, error)
 }
 
 // AlertHandler handles HTTP requests for alert rules.
@@ -71,6 +72,7 @@ func (h *AlertHandler) CreateRule(c *gin.Context) {
 		Name: req.Name, FieldName: req.FieldName,
 		Condition: req.Condition, Threshold: *req.Threshold,
 		Severity: req.Severity, Message: req.Message, CooldownSec: req.CooldownSec,
+		WebhookSecret: req.Secret,
 	})
 	if err != nil {
 		if isAlertValidationError(err) {
@@ -162,6 +164,7 @@ func (h *AlertHandler) UpdateRule(c *gin.Context) {
 	rule, err := h.svc.UpdateRule(c.Request.Context(), c.Param("id"), application.UpdateRuleInput{
 		Name: req.Name, Threshold: req.Threshold, Severity: req.Severity,
 		Message: req.Message, Enabled: req.Enabled, CooldownSec: req.CooldownSec,
+		WebhookSecret: req.Secret,
 	})
 	if err != nil {
 		if errors.Is(err, alert.ErrRuleNotFound) {
@@ -229,6 +232,50 @@ func (h *AlertHandler) ListDeliveries(c *gin.Context) {
 		items[i] = toDeliveryLogResponse(l)
 	}
 	response.OKWithMeta(c, items, pagination.NewOffsetResult(items, total, page))
+}
+
+// VerifySignature godoc
+// @Summary      Sandbox endpoint to verify an HMAC-SHA256 webhook signature
+// @Description  Computes HMAC-SHA256(secret, payload) for the rule and reports whether the provided signature matches.
+// @Tags         alert-rules
+// @Accept       json
+// @Produce      json
+// @Param        id       path      string                    true  "Rule ID"
+// @Param        request  body      VerifySignatureRequest    true  "Payload and signature to verify"
+// @Success      200      {object}  VerifySignatureResponse
+// @Failure      400      {object}  map[string]interface{}
+// @Failure      404      {object}  map[string]interface{}
+// @Security     BearerAuth
+// @Router       /api/v1/alert-rules/{id}/verify-signature [post]
+func (h *AlertHandler) VerifySignature(c *gin.Context) {
+	var req VerifySignatureRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apierr.BadRequest(err.Error()))
+		return
+	}
+	if err := validator.Validate(&req); err != nil {
+		response.ValidationError(c, err)
+		return
+	}
+	valid, err := h.svc.VerifyWebhookSignature(c.Request.Context(), c.Param("id"), req.Payload, req.Signature)
+	if err != nil {
+		if errors.Is(err, alert.ErrRuleNotFound) {
+			response.Error(c, apierr.NotFound("rule"))
+			return
+		}
+		if errors.Is(err, alert.ErrInvalidRuleID) {
+			response.Error(c, apierr.BadRequest(err.Error()))
+			return
+		}
+		if errors.Is(err, alert.ErrNoWebhookSecret) {
+			response.Error(c, apierr.BadRequest(err.Error()))
+			return
+		}
+		h.logger.Error("verify signature failed", "id", c.Param("id"), "error", err)
+		response.Error(c, apierr.ErrInternalServerError)
+		return
+	}
+	response.OK(c, VerifySignatureResponse{Valid: valid})
 }
 
 // isAlertValidationError reports whether err is a domain-level input error

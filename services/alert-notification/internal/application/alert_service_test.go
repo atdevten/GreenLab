@@ -329,3 +329,60 @@ func TestListDeliveries(t *testing.T) {
 		deliveryRepo.AssertExpectations(t)
 	})
 }
+
+func TestVerifyWebhookSignature(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("valid signature returns true", func(t *testing.T) {
+		svc, repo, _ := newTestAlertService(t)
+		id := uuid.New()
+		secret := "super-secret"
+		payload := `{"sensor":"temperature","value":42}`
+		sig := "sha256=" + alert.ComputeHMAC(secret, payload)
+
+		repo.On("GetByID", ctx, id).Return(&alert.Rule{ID: id, WebhookSecret: secret}, nil)
+
+		valid, err := svc.VerifyWebhookSignature(ctx, id.String(), payload, sig)
+		require.NoError(t, err)
+		assert.True(t, valid)
+		repo.AssertExpectations(t)
+	})
+
+	t.Run("wrong signature returns false", func(t *testing.T) {
+		svc, repo, _ := newTestAlertService(t)
+		id := uuid.New()
+		secret := "super-secret"
+		repo.On("GetByID", ctx, id).Return(&alert.Rule{ID: id, WebhookSecret: secret}, nil)
+
+		valid, err := svc.VerifyWebhookSignature(ctx, id.String(), `{"v":1}`, "sha256=wronghex")
+		require.NoError(t, err)
+		assert.False(t, valid)
+		repo.AssertExpectations(t)
+	})
+
+	t.Run("invalid rule id returns ErrInvalidRuleID", func(t *testing.T) {
+		svc, _, _ := newTestAlertService(t)
+		_, err := svc.VerifyWebhookSignature(ctx, "not-a-uuid", "payload", "sig")
+		assert.ErrorIs(t, err, alert.ErrInvalidRuleID)
+	})
+
+	t.Run("rule not found returns ErrRuleNotFound", func(t *testing.T) {
+		svc, repo, _ := newTestAlertService(t)
+		id := uuid.New()
+		repo.On("GetByID", ctx, id).Return(nil, alert.ErrRuleNotFound)
+
+		_, err := svc.VerifyWebhookSignature(ctx, id.String(), "payload", "sig")
+		assert.ErrorIs(t, err, alert.ErrRuleNotFound)
+		repo.AssertExpectations(t)
+	})
+
+	t.Run("no secret configured returns ErrNoWebhookSecret", func(t *testing.T) {
+		svc, repo, _ := newTestAlertService(t)
+		id := uuid.New()
+		repo.On("GetByID", ctx, id).Return(&alert.Rule{ID: id, WebhookSecret: ""}, nil)
+
+		_, err := svc.VerifyWebhookSignature(ctx, id.String(), "payload", "sig")
+		assert.ErrorIs(t, err, alert.ErrNoWebhookSecret)
+		repo.AssertExpectations(t)
+	})
+}
