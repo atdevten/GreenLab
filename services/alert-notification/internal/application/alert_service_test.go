@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/greenlab/alert-notification/internal/domain/alert"
+	"github.com/greenlab/alert-notification/internal/domain/delivery"
 )
 
 // --- mock RuleRepository ---
@@ -55,14 +56,38 @@ func (m *mockAlertPublisher) PublishAlert(ctx context.Context, event *alert.Aler
 	return m.Called(ctx, event).Error(0)
 }
 
+// --- mock DeliveryRepository ---
+
+type mockDeliveryRepo struct{ mock.Mock }
+
+func (m *mockDeliveryRepo) Save(ctx context.Context, l *delivery.Log) error {
+	return m.Called(ctx, l).Error(0)
+}
+
+func (m *mockDeliveryRepo) ListByRule(ctx context.Context, ruleID uuid.UUID, limit, offset int) ([]*delivery.Log, int64, error) {
+	args := m.Called(ctx, ruleID, limit, offset)
+	logs, _ := args.Get(0).([]*delivery.Log)
+	return logs, args.Get(1).(int64), args.Error(2)
+}
+
 // --- helpers ---
 
 func newTestAlertService(t *testing.T) (*AlertService, *mockRuleRepo, *mockAlertPublisher) {
 	t.Helper()
 	repo := &mockRuleRepo{}
 	pub := &mockAlertPublisher{}
-	svc := NewAlertService(repo, pub, slog.Default())
+	deliveryRepo := &mockDeliveryRepo{}
+	svc := NewAlertService(repo, pub, deliveryRepo, slog.Default())
 	return svc, repo, pub
+}
+
+func newTestAlertServiceWithDelivery(t *testing.T) (*AlertService, *mockRuleRepo, *mockAlertPublisher, *mockDeliveryRepo) {
+	t.Helper()
+	repo := &mockRuleRepo{}
+	pub := &mockAlertPublisher{}
+	deliveryRepo := &mockDeliveryRepo{}
+	svc := NewAlertService(repo, pub, deliveryRepo, slog.Default())
+	return svc, repo, pub, deliveryRepo
 }
 
 // --- tests ---
@@ -251,5 +276,56 @@ func TestDeleteRule(t *testing.T) {
 		svc, _, _ := newTestAlertService(t)
 		err := svc.DeleteRule(ctx, "not-a-uuid")
 		assert.ErrorIs(t, err, alert.ErrInvalidRuleID)
+	})
+}
+
+func TestListDeliveries(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("success returns paginated delivery logs", func(t *testing.T) {
+		svc, _, _, deliveryRepo := newTestAlertServiceWithDelivery(t)
+		ruleID := uuid.New()
+		expected := []*delivery.Log{
+			{ID: uuid.New(), RuleID: ruleID, URL: "https://example.com/hook", HTTPStatus: 200, LatencyMS: 42},
+			{ID: uuid.New(), RuleID: ruleID, URL: "https://example.com/hook", HTTPStatus: 500, LatencyMS: 150, ErrorMsg: "server error"},
+		}
+		deliveryRepo.On("ListByRule", ctx, ruleID, 10, 0).Return(expected, int64(2), nil)
+
+		logs, total, err := svc.ListDeliveries(ctx, ruleID.String(), 10, 0)
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), total)
+		assert.Len(t, logs, 2)
+		assert.Equal(t, 200, logs[0].HTTPStatus)
+		assert.Equal(t, int64(42), logs[0].LatencyMS)
+		deliveryRepo.AssertExpectations(t)
+	})
+
+	t.Run("invalid rule_id returns ErrInvalidRuleID", func(t *testing.T) {
+		svc, _, _, _ := newTestAlertServiceWithDelivery(t)
+		_, _, err := svc.ListDeliveries(ctx, "not-a-uuid", 10, 0)
+		assert.ErrorIs(t, err, alert.ErrInvalidRuleID)
+	})
+
+	t.Run("repo error is propagated", func(t *testing.T) {
+		svc, _, _, deliveryRepo := newTestAlertServiceWithDelivery(t)
+		ruleID := uuid.New()
+		dbErr := errors.New("db error")
+		deliveryRepo.On("ListByRule", ctx, ruleID, 10, 0).Return(nil, int64(0), dbErr)
+
+		_, _, err := svc.ListDeliveries(ctx, ruleID.String(), 10, 0)
+		assert.ErrorIs(t, err, dbErr)
+		deliveryRepo.AssertExpectations(t)
+	})
+
+	t.Run("empty result returns empty slice", func(t *testing.T) {
+		svc, _, _, deliveryRepo := newTestAlertServiceWithDelivery(t)
+		ruleID := uuid.New()
+		deliveryRepo.On("ListByRule", ctx, ruleID, 10, 0).Return([]*delivery.Log{}, int64(0), nil)
+
+		logs, total, err := svc.ListDeliveries(ctx, ruleID.String(), 10, 0)
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), total)
+		assert.Empty(t, logs)
+		deliveryRepo.AssertExpectations(t)
 	})
 }

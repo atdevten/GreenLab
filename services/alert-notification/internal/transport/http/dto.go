@@ -39,6 +39,18 @@ type RuleResponse struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// DeliveryLogResponse is the API representation of a webhook delivery log entry.
+type DeliveryLogResponse struct {
+	ID           string    `json:"id"`
+	RuleID       string    `json:"rule_id"`
+	URL          string    `json:"url"`
+	HTTPStatus   int       `json:"http_status"`
+	LatencyMS    int64     `json:"latency_ms"`
+	ResponseBody string    `json:"response_body"`
+	ErrorMsg     string    `json:"error_msg"`
+	DeliveredAt  time.Time `json:"delivered_at"`
+}
+
 // Notification DTOs
 type SendNotificationRequest struct {
 	WorkspaceID string `json:"workspace_id" validate:"required"`

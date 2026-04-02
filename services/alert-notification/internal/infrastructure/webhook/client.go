@@ -116,3 +116,39 @@ func (c *Client) Post(ctx context.Context, rawURL, payload string) error {
 	}
 	return nil
 }
+
+// PostDetailed sends a JSON payload to the given URL and returns delivery details.
+// Unlike Post, it captures HTTP status, first 512 bytes of the response body, and
+// round-trip latency. Errors from network failures or SSRF checks are returned via
+// err; a non-2xx HTTP status is NOT treated as an error — the caller records it.
+func (c *Client) PostDetailed(ctx context.Context, rawURL, payload string) (httpStatus int, responseBody string, latencyMS int64, err error) {
+	u, parseErr := url.Parse(rawURL)
+	if parseErr != nil {
+		return 0, "", 0, fmt.Errorf("invalid webhook URL: %w", parseErr)
+	}
+	if u.Scheme != "https" {
+		return 0, "", 0, fmt.Errorf("webhook URL must use https, got %q", u.Scheme)
+	}
+
+	req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, rawURL,
+		bytes.NewBufferString(payload))
+	if reqErr != nil {
+		return 0, "", 0, fmt.Errorf("create webhook request: %w", reqErr)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "GreenLab-Webhook/1.0")
+
+	start := time.Now()
+	resp, doErr := c.httpClient.Do(req)
+	latencyMS = time.Since(start).Milliseconds()
+	if doErr != nil {
+		return 0, "", latencyMS, fmt.Errorf("webhook request failed: %w", doErr)
+	}
+	defer resp.Body.Close()
+
+	buf := make([]byte, 512)
+	n, _ := io.ReadFull(resp.Body, buf)
+	_, _ = io.Copy(io.Discard, resp.Body)
+
+	return resp.StatusCode, string(buf[:n]), latencyMS, nil
+}
