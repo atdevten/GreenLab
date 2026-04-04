@@ -130,6 +130,17 @@ func (n *noopDeviceCache) GetDeviceByAPIKey(_ context.Context, _ string) (*devic
 func (n *noopDeviceCache) DeleteDevice(_ context.Context, _, _ string) error {
 	return nil
 }
+func (n *noopDeviceCache) IncrDeviceVersion(_ context.Context, _ string) error {
+	return nil
+}
+
+// noopRetentionManager is a RetentionManager that silently succeeds.
+// Used in tests that don't need real InfluxDB retention policy management.
+type noopRetentionManager struct{}
+
+func (n *noopRetentionManager) SetRetention(_ context.Context, _ string, _ int) error {
+	return nil
+}
 
 // tenantMiddleware injects the given workspace ID as the tenant claim so handlers
 // can call sharedMiddleware.GetTenantID without a real JWT.
@@ -207,7 +218,7 @@ func TestCrossTenant_DeviceA_CannotReadDeviceB(t *testing.T) {
 	logger := slog.Default()
 
 	deviceSvc := application.NewDeviceService(deviceRepo, &noopDeviceCache{}, logger)
-	channelSvc := application.NewChannelService(channelRepo)
+	channelSvc := application.NewChannelService(channelRepo, &noopRetentionManager{}, slog.Default())
 
 	deviceHandler := transporthttp.NewDeviceHandler(deviceSvc)
 	channelHandler := transporthttp.NewChannelHandler(channelSvc)
@@ -243,7 +254,7 @@ func TestCrossTenant_ChannelA_CannotBeReadByTenantB(t *testing.T) {
 	logger := slog.Default()
 
 	deviceSvc := application.NewDeviceService(deviceRepo, &noopDeviceCache{}, logger)
-	channelSvc := application.NewChannelService(channelRepo)
+	channelSvc := application.NewChannelService(channelRepo, &noopRetentionManager{}, slog.Default())
 
 	deviceHandler := transporthttp.NewDeviceHandler(deviceSvc)
 	channelHandler := transporthttp.NewChannelHandler(channelSvc)
@@ -292,7 +303,7 @@ func TestRotateAPIKey_ClearsDeviceFromCache(t *testing.T) {
 
 	// Wire the full HTTP stack (device handler does ownership check first).
 	deviceSvc := application.NewDeviceService(deviceRepo, deviceCache, logger)
-	channelSvc := application.NewChannelService(channelRepo)
+	channelSvc := application.NewChannelService(channelRepo, &noopRetentionManager{}, slog.Default())
 	deviceHandler := transporthttp.NewDeviceHandler(deviceSvc)
 	channelHandler := transporthttp.NewChannelHandler(channelSvc)
 
