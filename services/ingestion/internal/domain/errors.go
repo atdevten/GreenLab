@@ -1,6 +1,9 @@
 package domain
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 var (
 	ErrInvalidChannelID = errors.New("channel_id must be a valid UUID")
@@ -22,3 +25,15 @@ var (
 	ErrTSDeltaOverflow      = errors.New("timestamp_delta_overflow")
 	ErrTSDeltaInvalid       = errors.New("timestamp_delta_invalid")
 )
+
+// SchemaMismatchError carries the channel's current schema version for the 409 response.
+// It is returned by compact-format deserializers when the device's schema_version
+// does not match the server's current schema version for the channel.
+type SchemaMismatchError struct {
+	CurrentVersion uint32
+	ChannelID      string
+}
+
+func (e *SchemaMismatchError) Error() string {
+	return fmt.Sprintf("schema_version mismatch: server has version %d", e.CurrentVersion)
+}
