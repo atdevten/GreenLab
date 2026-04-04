@@ -33,10 +33,12 @@ type Deserializer interface {
 //  2. Format-specific Parse() call.
 //  3. Schema version check — batch.SchemaVersion must match schema.SchemaVersion.
 //     If schema.SchemaVersion == 0 (pre-TODO-028), skip the check.
+//     On mismatch, returns *domain.SchemaMismatchError so callers can include
+//     current_version and schema_url in the 409 response.
 //  4. Field index resolution — resolve each index in batch.FieldValues to a field name.
 //  5. resolveTDOffsets — convert TDOffsets + batch.Timestamp to per-field timestamps.
 //  6. Build []IngestInput (caller sets ChannelID and DeviceID afterwards).
-func deserializeCompact(body []byte, schema domain.DeviceSchema, d Deserializer) ([]application.IngestInput, error) {
+func deserializeCompact(body []byte, schema domain.DeviceSchema, d Deserializer, channelID string) ([]application.IngestInput, error) {
 	// Step 2: parse
 	batch, err := d.Parse(body)
 	if err != nil {
@@ -46,8 +48,10 @@ func deserializeCompact(body []byte, schema domain.DeviceSchema, d Deserializer)
 	// Step 3: schema version check
 	if schema.SchemaVersion != 0 && batch.SchemaVersion != 0 &&
 		batch.SchemaVersion != schema.SchemaVersion {
-		return nil, fmt.Errorf("%w: got %d, expected %d",
-			domain.ErrSchemaMismatch, batch.SchemaVersion, schema.SchemaVersion)
+		return nil, &domain.SchemaMismatchError{
+			CurrentVersion: schema.SchemaVersion,
+			ChannelID:      channelID,
+		}
 	}
 
 	// Step 4: field index resolution
