@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Build & Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: |
+            shared/go.sum
+            services/*/go.sum
+
+      - name: Build all services
+        run: make build
+
+      - name: Run unit tests
+        run: make test
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: |
+            shared/go.sum
+            services/*/go.sum
+
+      - name: Run ingestion integration tests
+        run: cd services/ingestion && go test -tags=integration -timeout 120s ./...
+
+      - name: Run device-registry integration tests
+        run: cd services/device-registry && go test -tags=integration -timeout 120s ./...
