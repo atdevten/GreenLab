@@ -54,8 +54,9 @@ type readingEvent struct {
 	Reading     readingPayload `json:"reading"`
 }
 
-// PublishReadings sends a batch of reading events.
-func (p *ReadingProducer) PublishReadings(ctx context.Context, readings []*domain.Reading) error {
+// buildMessages serializes a batch of readings into Kafka messages.
+// If replay is true, a "replay: true" header is added to each message.
+func buildMessages(readings []*domain.Reading, replay bool) ([]kafka.Message, error) {
 	msgs := make([]kafka.Message, 0, len(readings))
 	for _, r := range readings {
 		evt := readingEvent{
@@ -72,18 +73,46 @@ func (p *ReadingProducer) PublishReadings(ctx context.Context, readings []*domai
 		}
 		b, err := json.Marshal(evt)
 		if err != nil {
-			return fmt.Errorf("ReadingProducer.PublishReadings: marshal reading: %w", err)
+			return nil, fmt.Errorf("marshal reading: %w", err)
 		}
-		msgs = append(msgs, kafka.Message{
+		msg := kafka.Message{
 			Key:   []byte(r.ChannelID),
 			Value: b,
-		})
+		}
+		if replay {
+			msg.Headers = []kafka.Header{{Key: "replay", Value: []byte("true")}}
+		}
+		msgs = append(msgs, msg)
+	}
+	return msgs, nil
+}
+
+// PublishReadings sends a batch of reading events.
+func (p *ReadingProducer) PublishReadings(ctx context.Context, readings []*domain.Reading) error {
+	msgs, err := buildMessages(readings, false)
+	if err != nil {
+		return fmt.Errorf("ReadingProducer.PublishReadings: %w", err)
 	}
 	if len(msgs) == 0 {
 		return nil
 	}
 	if err := p.writer.WriteMessages(ctx, msgs...); err != nil {
 		return fmt.Errorf("ReadingProducer.PublishReadings: %w", err)
+	}
+	return nil
+}
+
+// PublishReplayReadings sends a batch of replay reading events with a "replay: true" header.
+func (p *ReadingProducer) PublishReplayReadings(ctx context.Context, readings []*domain.Reading) error {
+	msgs, err := buildMessages(readings, true)
+	if err != nil {
+		return fmt.Errorf("ReadingProducer.PublishReplayReadings: %w", err)
+	}
+	if len(msgs) == 0 {
+		return nil
+	}
+	if err := p.writer.WriteMessages(ctx, msgs...); err != nil {
+		return fmt.Errorf("ReadingProducer.PublishReplayReadings: %w", err)
 	}
 	return nil
 }

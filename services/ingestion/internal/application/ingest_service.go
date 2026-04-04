@@ -12,6 +12,22 @@ import (
 // EventPublisher publishes ingestion events.
 type EventPublisher interface {
 	PublishReadings(ctx context.Context, readings []*domain.Reading) error
+	PublishReplayReadings(ctx context.Context, readings []*domain.Reading) error
+}
+
+// ReplayDLQWriter persists replay readings that could not be published to Kafka.
+type ReplayDLQWriter interface {
+	Push(ctx context.Context, entry ReplayDLQEntry) error
+	IncrFailureMetric(ctx context.Context) error
+}
+
+// ReplayDLQEntry is a single item written to the DLQ.
+type ReplayDLQEntry struct {
+	ChannelID string             `json:"channel_id"`
+	DeviceID  string             `json:"device_id"`
+	Timestamp time.Time          `json:"timestamp"`
+	Fields    map[string]float64 `json:"fields"`
+	FailedAt  time.Time          `json:"failed_at"`
 }
 
 // IngestService handles write-side telemetry ingestion.
@@ -103,6 +119,68 @@ func (s *IngestService) IngestBatch(ctx context.Context, inputs []IngestInput) e
 		return fmt.Errorf("IngestBatch.Publish: %w", err)
 	}
 	return nil
+}
+
+// IngestReplay validates and publishes a batch of replay readings tagged with a
+// replay Kafka header. On publish failure it retries up to 3 times with
+// exponential back-off (100 ms → 200 ms → 400 ms). If all retries are
+// exhausted the readings are written best-effort to the provided DLQ and the
+// error is returned so the caller can respond 202 Accepted.
+// windowDays controls how far in the past a replay timestamp may be.
+func (s *IngestService) IngestReplay(ctx context.Context, inputs []IngestInput, windowDays int, dlq ReplayDLQWriter) error {
+	if len(inputs) == 0 {
+		return nil
+	}
+	batch := make([]*domain.Reading, 0, len(inputs))
+	for i, in := range inputs {
+		if err := domain.ValidateChannelID(in.ChannelID); err != nil {
+			return fmt.Errorf("IngestReplay: item %d: %w", i, err)
+		}
+		if len(in.Fields) == 0 {
+			return fmt.Errorf("IngestReplay: item %d: %w", i, domain.ErrEmptyFields)
+		}
+		ts := time.Now().UTC()
+		if in.Timestamp != nil {
+			if err := domain.ValidateReplayTimestamp(*in.Timestamp, windowDays); err != nil {
+				return fmt.Errorf("IngestReplay: item %d: %w", i, err)
+			}
+			ts = *in.Timestamp
+		}
+		batch = append(batch, domain.NewReading(in.ChannelID, in.DeviceID, in.Fields, in.Tags, ts))
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(100*(1<<(attempt-1))) * time.Millisecond)
+		}
+		lastErr = s.publisher.PublishReplayReadings(ctx, batch)
+		if lastErr == nil {
+			return nil
+		}
+		s.logger.WarnContext(ctx, "replay publish attempt failed",
+			"attempt", attempt+1,
+			"error", lastErr,
+		)
+	}
+
+	// All retries exhausted — write to DLQ best-effort.
+	for _, r := range batch {
+		entry := ReplayDLQEntry{
+			ChannelID: r.ChannelID,
+			DeviceID:  r.DeviceID,
+			Timestamp: r.Timestamp,
+			Fields:    r.Fields,
+			FailedAt:  time.Now().UTC(),
+		}
+		if err := dlq.Push(ctx, entry); err != nil {
+			s.logger.ErrorContext(ctx, "replay dlq push failed", "error", err, "channel_id", r.ChannelID)
+		}
+	}
+	if err := dlq.IncrFailureMetric(ctx); err != nil {
+		s.logger.ErrorContext(ctx, "replay dlq metric incr failed", "error", err)
+	}
+	return fmt.Errorf("IngestReplay.Publish: %w", lastErr)
 }
 
 // groupByTimestamp groups fields by their effective timestamp and returns one Reading

@@ -37,6 +37,21 @@ func ValidateTimestamp(ts time.Time, maxAge time.Duration) error {
 	return nil
 }
 
+// ValidateReplayTimestamp checks that ts falls within the replay window.
+// It rejects timestamps older than windowDays days and future timestamps beyond
+// the standard 30-second clock-skew allowance.
+func ValidateReplayTimestamp(ts time.Time, windowDays int) error {
+	now := time.Now().UTC()
+	if ts.After(now.Add(30 * time.Second)) {
+		return ErrTimestampFuture
+	}
+	window := time.Duration(windowDays) * 24 * time.Hour
+	if ts.Before(now.Add(-window)) {
+		return ErrTimestampOutOfReplayWindow
+	}
+	return nil
+}
+
 // NewReading constructs a Reading. ts must be a non-zero UTC time;
 // callers are responsible for supplying a default when no client timestamp is provided.
 func NewReading(channelID, deviceID string, fields map[string]float64, tags map[string]string, ts time.Time) *Reading {

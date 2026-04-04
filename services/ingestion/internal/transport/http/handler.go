@@ -34,6 +34,7 @@ const (
 type ingestService interface {
 	Ingest(ctx context.Context, in application.IngestInput) error
 	IngestBatch(ctx context.Context, readings []application.IngestInput) error
+	IngestReplay(ctx context.Context, inputs []application.IngestInput, windowDays int, dlq application.ReplayDLQWriter) error
 }
 
 // schemaACKStore records per-device schema version acknowledgements.
@@ -43,14 +44,23 @@ type schemaACKStore interface {
 }
 
 type Handler struct {
-	svc      ingestService
-	logger   *slog.Logger
-	ackStore schemaACKStore // nil = disabled
+	svc        ingestService
+	logger     *slog.Logger
+	ackStore   schemaACKStore          // nil = disabled
+	replayDLQ  application.ReplayDLQWriter // nil = DLQ disabled (fail closed)
 }
 
-// NewHandler creates a Handler. ackStore may be nil — if nil, schema ACK recording is skipped.
+// NewHandler creates a Handler. ackStore and replayDLQ may be nil.
+// When replayDLQ is nil the replay endpoint still works but DLQ fallback is
+// disabled (Kafka errors will be surfaced as 503 instead of 202).
 func NewHandler(svc ingestService, logger *slog.Logger, ackStore schemaACKStore) *Handler {
 	return &Handler{svc: svc, logger: logger, ackStore: ackStore}
+}
+
+// WithReplayDLQ attaches a DLQ writer to the handler for replay fallback.
+func (h *Handler) WithReplayDLQ(dlq application.ReplayDLQWriter) *Handler {
+	h.replayDLQ = dlq
+	return h
 }
 
 // Health godoc
@@ -326,6 +336,80 @@ func (h *Handler) ThingSpeak(lookup ChannelLookupFunc, logger *slog.Logger) gin.
 	}
 }
 
+const defaultReplayWindowDays = 30
+
+// Replay godoc
+// @Summary      Replay historical telemetry readings
+// @Tags         ingestion
+// @Accept       json
+// @Produce      json
+// @Param        channel_id  path      string        true  "Channel ID"
+// @Param        request     body      ReplayRequest true  "Batch of historical readings"
+// @Success      201         {object}  ReplayResponse
+// @Success      202         {object}  ReplayResponse
+// @Failure      400         {object}  map[string]interface{}
+// @Failure      401         {object}  map[string]interface{}
+// @Failure      403         {object}  map[string]interface{}
+// @Security     ApiKeyAuth
+// @Router       /v1/channels/{channel_id}/replay [post]
+func (h *Handler) Replay(c *gin.Context) {
+	schema, ok := contextDeviceSchema(c)
+	if !ok {
+		h.logger.ErrorContext(c.Request.Context(), "device_schema missing from auth context")
+		response.Error(c, apierr.ErrInternalServerError)
+		return
+	}
+
+	channelID := c.Param("channel_id")
+
+	var req ReplayRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apierr.BadRequest(err.Error()))
+		return
+	}
+	if err := validator.Validate(&req); err != nil {
+		response.ValidationError(c, err)
+		return
+	}
+
+	inputs := make([]application.IngestInput, len(req.Readings))
+	for i, r := range req.Readings {
+		ts := r.Timestamp
+		inputs[i] = application.IngestInput{
+			ChannelID: channelID,
+			DeviceID:  schema.DeviceID,
+			Fields:    r.Fields,
+			Timestamp: &ts,
+		}
+	}
+
+	err := h.svc.IngestReplay(c.Request.Context(), inputs, defaultReplayWindowDays, h.replayDLQ)
+	if err == nil {
+		response.Created(c, ReplayResponse{
+			Accepted:  len(req.Readings),
+			ChannelID: channelID,
+			RequestID: middleware.GetRequestID(c),
+		})
+		return
+	}
+
+	// If a DLQ is wired, readings were saved there — return 202 Accepted.
+	if h.replayDLQ != nil {
+		c.JSON(http.StatusAccepted, response.Envelope{
+			Success: true,
+			Data: ReplayResponse{
+				Accepted:       0,
+				QueuedForRetry: len(req.Readings),
+				ChannelID:      channelID,
+				RequestID:      middleware.GetRequestID(c),
+			},
+		})
+		return
+	}
+
+	errorToHTTPResponse(c, err, h.logger)
+}
+
 // errorToHTTPResponse maps domain errors to appropriate HTTP responses.
 func errorToHTTPResponse(c *gin.Context, err error, logger *slog.Logger) {
 	var schemaMismatch *domain.SchemaMismatchError
@@ -373,7 +457,8 @@ func isDomainValidationError(err error) bool {
 	return errors.Is(err, domain.ErrInvalidChannelID) ||
 		errors.Is(err, domain.ErrEmptyFields) ||
 		errors.Is(err, domain.ErrTimestampTooOld) ||
-		errors.Is(err, domain.ErrTimestampFuture)
+		errors.Is(err, domain.ErrTimestampFuture) ||
+		errors.Is(err, domain.ErrTimestampOutOfReplayWindow)
 }
 
 // contextDeviceSchema extracts a domain.DeviceSchema from the Gin context.

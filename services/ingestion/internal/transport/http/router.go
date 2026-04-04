@@ -49,6 +49,7 @@ func NewRouter(h *Handler, apiKeyLookup APIKeyLookupFunc, channelLookup ChannelL
 	{
 		v1.POST("/channels/:channel_id/data", h.Ingest)
 		v1.POST("/channels/:channel_id/data/bulk", h.BulkIngest)
+		v1.POST("/channels/:channel_id/replay", h.Replay)
 	}
 	return r
 }

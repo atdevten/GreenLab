@@ -22,6 +22,10 @@ func (m *mockPublisher) PublishReadings(ctx context.Context, readings []*domain.
 	return m.Called(ctx, readings).Error(0)
 }
 
+func (m *mockPublisher) PublishReplayReadings(ctx context.Context, readings []*domain.Reading) error {
+	return m.Called(ctx, readings).Error(0)
+}
+
 // --- helpers ---
 
 // newTestIngestService creates a service with maxReadingAge=0 (timestamp validation disabled)
@@ -369,5 +373,149 @@ func TestIngestBatch(t *testing.T) {
 		assert.ErrorIs(t, err, domain.ErrTimestampFuture)
 		assert.ErrorContains(t, err, "item 1")
 		p.AssertNotCalled(t, "PublishReadings")
+	})
+}
+
+// --- mockReplayDLQ ---
+
+type mockReplayDLQ struct{ mock.Mock }
+
+func (m *mockReplayDLQ) Push(ctx context.Context, entry ReplayDLQEntry) error {
+	return m.Called(ctx, entry).Error(0)
+}
+
+func (m *mockReplayDLQ) IncrFailureMetric(ctx context.Context) error {
+	return m.Called(ctx).Error(0)
+}
+
+// --- IngestReplay tests ---
+
+func TestIngestReplay(t *testing.T) {
+	ctx := context.Background()
+	channelID := uuid.New().String()
+
+	t.Run("success — publishes with replay header and returns nil", func(t *testing.T) {
+		svc, p := newTestIngestService(t)
+		dlq := &mockReplayDLQ{}
+
+		ts := time.Now().UTC().Add(-24 * time.Hour)
+		p.On("PublishReplayReadings", ctx, mock.AnythingOfType("[]*domain.Reading")).Return(nil)
+
+		err := svc.IngestReplay(ctx, []IngestInput{
+			{ChannelID: channelID, DeviceID: "dev-1", Fields: map[string]float64{"temp": 22.5}, Timestamp: &ts},
+		}, 30, dlq)
+		require.NoError(t, err)
+		p.AssertExpectations(t)
+		dlq.AssertNotCalled(t, "Push")
+	})
+
+	t.Run("empty inputs returns nil without publishing", func(t *testing.T) {
+		svc, p := newTestIngestService(t)
+		dlq := &mockReplayDLQ{}
+
+		err := svc.IngestReplay(ctx, nil, 30, dlq)
+		require.NoError(t, err)
+		p.AssertNotCalled(t, "PublishReplayReadings")
+		dlq.AssertNotCalled(t, "Push")
+	})
+
+	t.Run("invalid channel_id returns validation error", func(t *testing.T) {
+		svc, p := newTestIngestService(t)
+		dlq := &mockReplayDLQ{}
+
+		err := svc.IngestReplay(ctx, []IngestInput{
+			{ChannelID: "not-a-uuid", Fields: map[string]float64{"temp": 1}},
+		}, 30, dlq)
+		assert.ErrorIs(t, err, domain.ErrInvalidChannelID)
+		p.AssertNotCalled(t, "PublishReplayReadings")
+	})
+
+	t.Run("empty fields returns validation error", func(t *testing.T) {
+		svc, p := newTestIngestService(t)
+		dlq := &mockReplayDLQ{}
+
+		err := svc.IngestReplay(ctx, []IngestInput{
+			{ChannelID: channelID, Fields: nil},
+		}, 30, dlq)
+		assert.ErrorIs(t, err, domain.ErrEmptyFields)
+		p.AssertNotCalled(t, "PublishReplayReadings")
+	})
+
+	t.Run("timestamp outside replay window returns ErrTimestampOutOfReplayWindow", func(t *testing.T) {
+		svc, p := newTestIngestService(t)
+		dlq := &mockReplayDLQ{}
+
+		oldTS := time.Now().UTC().Add(-60 * 24 * time.Hour) // 60 days ago, window is 30
+		err := svc.IngestReplay(ctx, []IngestInput{
+			{ChannelID: channelID, Fields: map[string]float64{"temp": 1}, Timestamp: &oldTS},
+		}, 30, dlq)
+		assert.ErrorIs(t, err, domain.ErrTimestampOutOfReplayWindow)
+		p.AssertNotCalled(t, "PublishReplayReadings")
+	})
+
+	t.Run("future timestamp returns ErrTimestampFuture", func(t *testing.T) {
+		svc, p := newTestIngestService(t)
+		dlq := &mockReplayDLQ{}
+
+		futureTS := time.Now().UTC().Add(2 * time.Minute)
+		err := svc.IngestReplay(ctx, []IngestInput{
+			{ChannelID: channelID, Fields: map[string]float64{"temp": 1}, Timestamp: &futureTS},
+		}, 30, dlq)
+		assert.ErrorIs(t, err, domain.ErrTimestampFuture)
+		p.AssertNotCalled(t, "PublishReplayReadings")
+	})
+
+	t.Run("publish failure triggers retries and writes to DLQ", func(t *testing.T) {
+		svc, p := newTestIngestService(t)
+		dlq := &mockReplayDLQ{}
+		publishErr := errors.New("kafka unavailable")
+
+		// All 3 attempts fail.
+		p.On("PublishReplayReadings", ctx, mock.AnythingOfType("[]*domain.Reading")).Return(publishErr).Times(3)
+		dlq.On("Push", ctx, mock.AnythingOfType("ReplayDLQEntry")).Return(nil)
+		dlq.On("IncrFailureMetric", ctx).Return(nil)
+
+		ts := time.Now().UTC().Add(-1 * time.Hour)
+		err := svc.IngestReplay(ctx, []IngestInput{
+			{ChannelID: channelID, DeviceID: "dev-1", Fields: map[string]float64{"temp": 1}, Timestamp: &ts},
+		}, 30, dlq)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, publishErr)
+		p.AssertExpectations(t)
+		dlq.AssertExpectations(t)
+	})
+
+	t.Run("publish fails on first attempt then succeeds — no DLQ write", func(t *testing.T) {
+		svc, p := newTestIngestService(t)
+		dlq := &mockReplayDLQ{}
+		publishErr := errors.New("transient kafka error")
+
+		// First call fails, second call succeeds.
+		p.On("PublishReplayReadings", ctx, mock.AnythingOfType("[]*domain.Reading")).
+			Return(publishErr).Once()
+		p.On("PublishReplayReadings", ctx, mock.AnythingOfType("[]*domain.Reading")).
+			Return(nil).Once()
+
+		ts := time.Now().UTC().Add(-1 * time.Hour)
+		err := svc.IngestReplay(ctx, []IngestInput{
+			{ChannelID: channelID, DeviceID: "dev-1", Fields: map[string]float64{"temp": 1}, Timestamp: &ts},
+		}, 30, dlq)
+		require.NoError(t, err)
+		p.AssertExpectations(t)
+		dlq.AssertNotCalled(t, "Push")
+	})
+
+	t.Run("item at index 1 fails validation — error includes item index", func(t *testing.T) {
+		svc, p := newTestIngestService(t)
+		dlq := &mockReplayDLQ{}
+
+		ts := time.Now().UTC().Add(-1 * time.Hour)
+		err := svc.IngestReplay(ctx, []IngestInput{
+			{ChannelID: channelID, DeviceID: "dev-1", Fields: map[string]float64{"temp": 1}, Timestamp: &ts},
+			{ChannelID: "not-a-uuid", Fields: map[string]float64{"temp": 2}},
+		}, 30, dlq)
+		assert.ErrorIs(t, err, domain.ErrInvalidChannelID)
+		assert.ErrorContains(t, err, "item 1")
+		p.AssertNotCalled(t, "PublishReplayReadings")
 	})
 }
