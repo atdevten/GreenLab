@@ -39,7 +39,7 @@ func startKafka(t *testing.T) []string {
 	t.Helper()
 	ctx := context.Background()
 
-	ctr, err := kafkaTC.Run(ctx, "confluentinc/cp-kafka:7.6.0")
+	ctr, err := kafkaTC.Run(ctx, "confluentinc/confluent-local:7.5.0")
 	require.NoError(t, err, "start kafka container")
 	t.Cleanup(func() { _ = ctr.Terminate(ctx) })
 
@@ -72,7 +72,7 @@ func startRedis(t *testing.T) *redis.Client {
 }
 
 // newTestRouter wires up the real stack: ReadingProducer → IngestService → Handler → NewRouter.
-// apiKey is the only accepted key; any other triggers ErrDeviceNotFound.
+// testAPIKey is the only accepted key; any other triggers ErrDeviceNotFound.
 func newTestRouter(t *testing.T, brokers []string, rdb *redis.Client) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -83,18 +83,35 @@ func newTestRouter(t *testing.T, brokers []string, rdb *redis.Client) *gin.Engin
 	svc := application.NewIngestService(producer, slog.Default(), 0 /* no max age in tests */)
 	handler := transporthttp.NewHandler(svc, slog.Default())
 
-	lookup := func(ctx context.Context, key, channelID string) (domain.DeviceSchema, error) {
-		if key == testAPIKey {
-			return domain.DeviceSchema{
-				DeviceID:  testDeviceID,
-				ChannelID: channelID,
-			}, nil
-		}
-		return domain.DeviceSchema{}, domain.ErrDeviceNotFound
-	}
-
-	return transporthttp.NewRouter(handler, lookup, slog.Default(), rdb)
+	return transporthttp.NewRouter(handler, stubLookup, slog.Default(), rdb)
 }
+
+// newAuthOnlyRouter builds a router without a real Kafka producer — only the auth
+// middleware is exercised. Safe to use for tests that expect a 401 before any
+// publish logic is reached.
+func newAuthOnlyRouter(t *testing.T, rdb *redis.Client) *gin.Engine {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+
+	// noopPublisher satisfies EventPublisher but never touches Kafka.
+	svc := application.NewIngestService(noopPublisher{}, slog.Default(), 0)
+	handler := transporthttp.NewHandler(svc, slog.Default())
+
+	return transporthttp.NewRouter(handler, stubLookup, slog.Default(), rdb)
+}
+
+// stubLookup accepts only testAPIKey; everything else returns ErrDeviceNotFound.
+func stubLookup(_ context.Context, key, channelID string) (domain.DeviceSchema, error) {
+	if key == testAPIKey {
+		return domain.DeviceSchema{DeviceID: testDeviceID, ChannelID: channelID}, nil
+	}
+	return domain.DeviceSchema{}, domain.ErrDeviceNotFound
+}
+
+// noopPublisher is an EventPublisher that discards all readings.
+type noopPublisher struct{}
+
+func (noopPublisher) PublishReadings(_ context.Context, _ []*domain.Reading) error { return nil }
 
 // readKafkaMessages reads exactly count messages from topic and unmarshals each into a map.
 // Fails the test if count messages are not received within timeout.
@@ -163,10 +180,9 @@ func TestIngest_ValidRequest_PublishesToKafka(t *testing.T) {
 
 // TestIngest_MissingAPIKey_Returns401 verifies that a request without an API key is rejected.
 func TestIngest_MissingAPIKey_Returns401(t *testing.T) {
-	brokers := startKafka(t)
 	rdb := startRedis(t)
 
-	router := newTestRouter(t, brokers, rdb)
+	router := newAuthOnlyRouter(t, rdb)
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"fields": map[string]float64{"temperature": 22.5},
@@ -183,10 +199,9 @@ func TestIngest_MissingAPIKey_Returns401(t *testing.T) {
 
 // TestIngest_InvalidAPIKey_Returns401 verifies that an unrecognised API key returns 401.
 func TestIngest_InvalidAPIKey_Returns401(t *testing.T) {
-	brokers := startKafka(t)
 	rdb := startRedis(t)
 
-	router := newTestRouter(t, brokers, rdb)
+	router := newAuthOnlyRouter(t, rdb)
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"fields": map[string]float64{"temperature": 22.5},
