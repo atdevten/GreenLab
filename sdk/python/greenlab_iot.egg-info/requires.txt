@@ -1,0 +1,8 @@
+msgpack>=1.0
+lz4>=4.0
+httpx>=0.27
+
+[dev]
+pytest>=8.0
+pytest-asyncio
+respx>=0.21

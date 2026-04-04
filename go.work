@@ -9,4 +9,5 @@ use (
 	./services/query-realtime
 	./services/supporting
 	./shared
+	./sdk/go
 )
