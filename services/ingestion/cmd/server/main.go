@@ -65,11 +65,12 @@ func main() {
 	}()
 
 	apiKeyCache := infraRedis.NewAPIKeyCache(rdb)
+	schemaACKStore := infraRedis.NewSchemaACKStore(rdb)
 	deviceRegistryClient := infraDeviceRegistry.NewClient(cfg.DeviceRegistry.BaseURL, nil)
 	apiKeyValidator := infraAPIKey.NewValidator(apiKeyCache, deviceRegistryClient, slog.Default())
 
 	svc := application.NewIngestService(producer, slog.Default(), cfg.Ingest.MaxReadingAge)
-	handler := ingestionHTTP.NewHandler(svc, slog.Default())
+	handler := ingestionHTTP.NewHandler(svc, slog.Default(), schemaACKStore)
 	router := ingestionHTTP.NewRouter(handler, apiKeyValidator.Validate, deviceRegistryClient.ResolveChannelByAPIKey, slog.Default(), rdb)
 
 	srv := &http.Server{

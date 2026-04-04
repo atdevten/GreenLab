@@ -37,7 +37,7 @@ func (m *mockIngestService) IngestBatch(ctx context.Context, readings []applicat
 
 func newTestHandler(svc ingestService) *Handler {
 	gin.SetMode(gin.TestMode)
-	return NewHandler(svc, slog.Default())
+	return NewHandler(svc, slog.Default(), nil)
 }
 
 const testRequestID = "test-request-id-1234"

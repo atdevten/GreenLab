@@ -36,13 +36,21 @@ type ingestService interface {
 	IngestBatch(ctx context.Context, readings []application.IngestInput) error
 }
 
-type Handler struct {
-	svc    ingestService
-	logger *slog.Logger
+// schemaACKStore records per-device schema version acknowledgements.
+// A nil value disables ACK recording (fail-open).
+type schemaACKStore interface {
+	RecordACK(ctx context.Context, channelID, deviceID string, version uint32) error
 }
 
-func NewHandler(svc ingestService, logger *slog.Logger) *Handler {
-	return &Handler{svc: svc, logger: logger}
+type Handler struct {
+	svc      ingestService
+	logger   *slog.Logger
+	ackStore schemaACKStore // nil = disabled
+}
+
+// NewHandler creates a Handler. ackStore may be nil — if nil, schema ACK recording is skipped.
+func NewHandler(svc ingestService, logger *slog.Logger, ackStore schemaACKStore) *Handler {
+	return &Handler{svc: svc, logger: logger, ackStore: ackStore}
 }
 
 // Health godoc
@@ -154,6 +162,14 @@ func (h *Handler) ingestCompact(c *gin.Context, channelID string, schema domain.
 	if err := h.svc.IngestBatch(c.Request.Context(), inputs); err != nil {
 		errorToHTTPResponse(c, err, h.logger)
 		return
+	}
+
+	// Record schema ACK after a successful compact-format ingest (fail-open: errors are logged only).
+	if h.ackStore != nil {
+		if err := h.ackStore.RecordACK(c.Request.Context(), channelID, schema.DeviceID, schema.SchemaVersion); err != nil {
+			h.logger.WarnContext(c.Request.Context(), "schema ACK record failed", "error", err,
+				"channel_id", channelID, "device_id", schema.DeviceID, "schema_version", schema.SchemaVersion)
+		}
 	}
 
 	c.Header("X-Recommended-Format", "msgpack")
