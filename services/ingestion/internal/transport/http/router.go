@@ -38,6 +38,13 @@ func NewRouter(h *Handler, apiKeyLookup APIKeyLookupFunc, channelLookup ChannelL
 		Requests: 100,
 		Window:   time.Minute,
 		KeyFunc:  sharedMiddleware.APIKeyKeyFunc,
+		Logger:   logger,
+	}))
+	v1.Use(sharedMiddleware.RateLimit(rdb, sharedMiddleware.RateLimitConfig{
+		Requests: 10,
+		Window:   time.Second,
+		KeyFunc:  sharedMiddleware.ChannelIDKeyFunc,
+		Logger:   logger,
 	}))
 	{
 		v1.POST("/channels/:channel_id/data", h.Ingest)
