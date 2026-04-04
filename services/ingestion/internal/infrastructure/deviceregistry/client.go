@@ -37,6 +37,19 @@ type apiResponse struct {
 	Data validateAPIKeyResponse `json:"data"`
 }
 
+// resolveChannelResponse mirrors the device-registry GET /internal/resolve-channel response.
+type resolveChannelResponseBody struct {
+	DeviceID      string           `json:"device_id"`
+	ChannelID     string           `json:"channel_id"`
+	Fields        []fieldEntryJSON `json:"fields"`
+	SchemaVersion uint32           `json:"schema_version"`
+}
+
+// resolveChannelAPIResponse wraps the shared response envelope for resolve-channel.
+type resolveChannelAPIResponse struct {
+	Data resolveChannelResponseBody `json:"data"`
+}
+
 // Client calls device-registry's internal validate-api-key endpoint.
 type Client struct {
 	baseURL    string
@@ -50,6 +63,57 @@ func NewClient(baseURL string, httpClient *http.Client) *Client {
 		httpClient = http.DefaultClient
 	}
 	return &Client{baseURL: baseURL, httpClient: httpClient}
+}
+
+// ResolveChannelByAPIKey calls GET /internal/resolve-channel?api_key={key} and returns
+// the DeviceSchema for the first channel owned by the device.
+// Returns domain.ErrDeviceNotFound when device-registry returns 401.
+func (c *Client) ResolveChannelByAPIKey(ctx context.Context, apiKey string) (domain.DeviceSchema, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.baseURL+"/internal/resolve-channel?api_key="+apiKey, nil)
+	if err != nil {
+		return domain.DeviceSchema{}, fmt.Errorf("Client.ResolveChannelByAPIKey new request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return domain.DeviceSchema{}, fmt.Errorf("Client.ResolveChannelByAPIKey http: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return domain.DeviceSchema{}, fmt.Errorf("Client.ResolveChannelByAPIKey: %w", domain.ErrDeviceNotFound)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return domain.DeviceSchema{}, fmt.Errorf("Client.ResolveChannelByAPIKey unexpected status %d: %s", resp.StatusCode, b)
+	}
+
+	var envelope resolveChannelAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		return domain.DeviceSchema{}, fmt.Errorf("Client.ResolveChannelByAPIKey decode: %w", err)
+	}
+
+	r := envelope.Data
+	if r.DeviceID == "" {
+		return domain.DeviceSchema{}, errors.New("Client.ResolveChannelByAPIKey: empty device_id in response")
+	}
+	if r.ChannelID == "" {
+		return domain.DeviceSchema{}, errors.New("Client.ResolveChannelByAPIKey: empty channel_id in response")
+	}
+
+	fields := make([]domain.FieldEntry, len(r.Fields))
+	for i, f := range r.Fields {
+		fields[i] = domain.FieldEntry{Index: f.Index, Name: f.Name, Type: f.Type}
+	}
+
+	return domain.DeviceSchema{
+		DeviceID:      r.DeviceID,
+		ChannelID:     r.ChannelID,
+		Fields:        fields,
+		SchemaVersion: r.SchemaVersion,
+	}, nil
 }
 
 // GetByAPIKey implements the store interface for apikey.Validator.

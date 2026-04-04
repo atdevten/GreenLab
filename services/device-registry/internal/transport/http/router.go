@@ -72,6 +72,7 @@ func NewRouter(deviceH *DeviceHandler, channelH *ChannelHandler, fieldH *FieldHa
 	internal := r.Group("/internal")
 	{
 		internal.POST("/validate-api-key", internalH.ValidateAPIKey)
+		internal.GET("/resolve-channel", internalH.ResolveChannel)
 	}
 
 	// Device-facing schema endpoint — authenticated via X-API-Key header.

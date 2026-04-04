@@ -229,6 +229,87 @@ func (h *Handler) BulkIngest(c *gin.Context) {
 	})
 }
 
+// ThingSpeak godoc
+// @Summary      ThingSpeak-compatible telemetry write endpoint
+// @Tags         ingestion
+// @Produce      plain
+// @Param        api_key  query  string  true   "Device API key"
+// @Param        field1   query  number  false  "Field 1 value"
+// @Param        field2   query  number  false  "Field 2 value"
+// @Param        field3   query  number  false  "Field 3 value"
+// @Param        field4   query  number  false  "Field 4 value"
+// @Param        field5   query  number  false  "Field 5 value"
+// @Param        field6   query  number  false  "Field 6 value"
+// @Param        field7   query  number  false  "Field 7 value"
+// @Param        field8   query  number  false  "Field 8 value"
+// @Success      200  {string}  string  "entry_id (Unix timestamp) on success, 0 on failure"
+// @Router       /update [get]
+func (h *Handler) ThingSpeak(lookup ChannelLookupFunc, logger *slog.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		apiKey := c.Query("api_key")
+		if apiKey == "" {
+			apiKey = c.GetHeader("X-API-Key")
+		}
+		if apiKey == "" {
+			c.String(http.StatusOK, "0")
+			return
+		}
+
+		schema, err := lookup(c.Request.Context(), apiKey)
+		if err != nil {
+			if errors.Is(err, domain.ErrDeviceNotFound) {
+				c.String(http.StatusOK, "0")
+				return
+			}
+			logger.ErrorContext(c.Request.Context(), "thingspeak channel lookup failed", "error", err)
+			c.String(http.StatusOK, "0")
+			return
+		}
+
+		// Build a position→name map from the schema fields.
+		posToName := make(map[int]string, len(schema.Fields))
+		for _, f := range schema.Fields {
+			posToName[int(f.Index)] = f.Name
+		}
+
+		// Parse field1..field8 query params and map to named fields.
+		fields := make(map[string]float64)
+		for i := 1; i <= 8; i++ {
+			raw := c.Query(fmt.Sprintf("field%d", i))
+			if raw == "" {
+				continue
+			}
+			var val float64
+			if _, err := fmt.Sscanf(raw, "%g", &val); err != nil {
+				continue
+			}
+			name, ok := posToName[i]
+			if !ok {
+				continue
+			}
+			fields[name] = val
+		}
+
+		if len(fields) == 0 {
+			c.String(http.StatusOK, "0")
+			return
+		}
+
+		if err := h.svc.Ingest(c.Request.Context(), application.IngestInput{
+			ChannelID: schema.ChannelID,
+			DeviceID:  schema.DeviceID,
+			Fields:    fields,
+		}); err != nil {
+			logger.ErrorContext(c.Request.Context(), "thingspeak ingest failed", "error", err)
+			c.String(http.StatusOK, "0")
+			return
+		}
+
+		entryID := time.Now().Unix()
+		c.String(http.StatusOK, fmt.Sprintf("%d", entryID))
+	}
+}
+
 // errorToHTTPResponse maps domain errors to appropriate HTTP responses.
 func errorToHTTPResponse(c *gin.Context, err error, logger *slog.Logger) {
 	switch {

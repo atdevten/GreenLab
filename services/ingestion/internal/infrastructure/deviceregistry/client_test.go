@@ -12,6 +12,126 @@ import (
 	"github.com/greenlab/ingestion/internal/domain"
 )
 
+func TestClient_ResolveChannelByAPIKey(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("200 response returns correct DeviceSchema with channel_id", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/internal/resolve-channel", r.URL.Path)
+			assert.Equal(t, "GET", r.Method)
+			assert.Equal(t, "test-api-key", r.URL.Query().Get("api_key"))
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"device_id":  "dev-uuid-1",
+					"channel_id": "chan-uuid-1",
+					"fields": []map[string]any{
+						{"index": 1, "name": "temperature", "type": "float"},
+					},
+					"schema_version": 1,
+				},
+			})
+		}))
+		defer srv.Close()
+
+		client := NewClient(srv.URL, srv.Client())
+		schema, err := client.ResolveChannelByAPIKey(ctx, "test-api-key")
+		require.NoError(t, err)
+
+		assert.Equal(t, "dev-uuid-1", schema.DeviceID)
+		assert.Equal(t, "chan-uuid-1", schema.ChannelID)
+		assert.Equal(t, uint32(1), schema.SchemaVersion)
+		require.Len(t, schema.Fields, 1)
+		assert.Equal(t, domain.FieldEntry{Index: 1, Name: "temperature", Type: "float"}, schema.Fields[0])
+	})
+
+	t.Run("401 response returns ErrDeviceNotFound", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+		}))
+		defer srv.Close()
+
+		client := NewClient(srv.URL, srv.Client())
+		_, err := client.ResolveChannelByAPIKey(ctx, "bad-key")
+		assert.ErrorIs(t, err, domain.ErrDeviceNotFound)
+	})
+
+	t.Run("500 response returns wrapped error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer srv.Close()
+
+		client := NewClient(srv.URL, srv.Client())
+		_, err := client.ResolveChannelByAPIKey(ctx, "key")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "500")
+	})
+
+	t.Run("network error returns wrapped error", func(t *testing.T) {
+		client := NewClient("http://127.0.0.1:1", nil) // unreachable port
+		_, err := client.ResolveChannelByAPIKey(ctx, "key")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Client.ResolveChannelByAPIKey")
+	})
+
+	t.Run("response with empty device_id returns error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"device_id":  "",
+					"channel_id": "chan-1",
+					"fields":     []any{},
+				},
+			})
+		}))
+		defer srv.Close()
+
+		client := NewClient(srv.URL, srv.Client())
+		_, err := client.ResolveChannelByAPIKey(ctx, "key")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "empty device_id")
+	})
+
+	t.Run("response with empty channel_id returns error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"device_id":  "dev-1",
+					"channel_id": "",
+					"fields":     []any{},
+				},
+			})
+		}))
+		defer srv.Close()
+
+		client := NewClient(srv.URL, srv.Client())
+		_, err := client.ResolveChannelByAPIKey(ctx, "key")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "empty channel_id")
+	})
+
+	t.Run("malformed JSON response returns error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{invalid`))
+		}))
+		defer srv.Close()
+
+		client := NewClient(srv.URL, srv.Client())
+		_, err := client.ResolveChannelByAPIKey(ctx, "key")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "decode")
+	})
+}
+
 func TestClient_GetByAPIKey(t *testing.T) {
 	ctx := context.Background()
 

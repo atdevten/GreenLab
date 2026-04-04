@@ -26,6 +26,11 @@ func (m *mockInternalService) ValidateAPIKey(ctx context.Context, apiKey, channe
 	return args.Get(0).(application.ValidateAPIKeyResult), args.Error(1)
 }
 
+func (m *mockInternalService) ResolveChannelByAPIKey(ctx context.Context, apiKey string) (application.ResolveChannelResult, error) {
+	args := m.Called(ctx, apiKey)
+	return args.Get(0).(application.ResolveChannelResult), args.Error(1)
+}
+
 // --- helpers ---
 
 func newInternalRouter(svc internalService) *gin.Engine {
@@ -33,6 +38,7 @@ func newInternalRouter(svc internalService) *gin.Engine {
 	r := gin.New()
 	h := NewInternalHandler(svc)
 	r.POST("/internal/validate-api-key", h.ValidateAPIKey)
+	r.GET("/internal/resolve-channel", h.ResolveChannel)
 	r.GET("/v1/channels/:id/schema", h.GetChannelSchema)
 	return r
 }
@@ -233,6 +239,107 @@ func TestInternalHandler_GetChannelSchema(t *testing.T) {
 		newInternalRouter(svc).ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
+		svc.AssertExpectations(t)
+	})
+}
+
+func TestInternalHandler_ResolveChannel(t *testing.T) {
+	resolve := func(r *gin.Engine, apiKey string) *httptest.ResponseRecorder {
+		url := "/internal/resolve-channel"
+		if apiKey != "" {
+			url += "?api_key=" + apiKey
+		}
+		req := httptest.NewRequest(http.MethodGet, url, nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+
+	t.Run("valid api_key returns device_id, channel_id and fields", func(t *testing.T) {
+		svc := &mockInternalService{}
+		result := application.ResolveChannelResult{
+			ChannelID: "chan-uuid-1",
+			ValidateAPIKeyResult: application.ValidateAPIKeyResult{
+				DeviceID: "dev-uuid-1",
+				Fields: []application.FieldEntry{
+					{Index: 1, Name: "temperature", Type: "float"},
+					{Index: 2, Name: "humidity", Type: "float"},
+				},
+				SchemaVersion: 2,
+			},
+		}
+		svc.On("ResolveChannelByAPIKey", mock.Anything, "good-key").Return(result, nil)
+
+		w := resolve(newInternalRouter(svc), "good-key")
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var resp map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+		data := resp["data"].(map[string]any)
+		assert.Equal(t, "dev-uuid-1", data["device_id"])
+		assert.Equal(t, "chan-uuid-1", data["channel_id"])
+		assert.Equal(t, float64(2), data["schema_version"])
+
+		fields := data["fields"].([]any)
+		require.Len(t, fields, 2)
+		assert.Equal(t, "temperature", fields[0].(map[string]any)["name"])
+
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("missing api_key returns 400", func(t *testing.T) {
+		svc := &mockInternalService{}
+		w := resolve(newInternalRouter(svc), "")
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		svc.AssertNotCalled(t, "ResolveChannelByAPIKey")
+	})
+
+	t.Run("unknown api_key returns 401", func(t *testing.T) {
+		svc := &mockInternalService{}
+		svc.On("ResolveChannelByAPIKey", mock.Anything, "bad-key").
+			Return(application.ResolveChannelResult{}, device.ErrDeviceNotFound)
+
+		w := resolve(newInternalRouter(svc), "bad-key")
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("infrastructure error returns 500", func(t *testing.T) {
+		svc := &mockInternalService{}
+		svc.On("ResolveChannelByAPIKey", mock.Anything, "key-abc").
+			Return(application.ResolveChannelResult{}, errors.New("db timeout"))
+
+		w := resolve(newInternalRouter(svc), "key-abc")
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("device with no fields returns empty fields slice", func(t *testing.T) {
+		svc := &mockInternalService{}
+		result := application.ResolveChannelResult{
+			ChannelID: "chan-uuid-2",
+			ValidateAPIKeyResult: application.ValidateAPIKeyResult{
+				DeviceID:      "dev-uuid-2",
+				Fields:        []application.FieldEntry{},
+				SchemaVersion: 1,
+			},
+		}
+		svc.On("ResolveChannelByAPIKey", mock.Anything, "key-nofields").Return(result, nil)
+
+		w := resolve(newInternalRouter(svc), "key-nofields")
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var resp map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+		data := resp["data"].(map[string]any)
+		assert.Equal(t, "chan-uuid-2", data["channel_id"])
+		fields := data["fields"].([]any)
+		assert.Empty(t, fields)
+
 		svc.AssertExpectations(t)
 	})
 }
