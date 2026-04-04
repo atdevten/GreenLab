@@ -26,6 +26,7 @@ import (
 	infraDeviceRegistry "github.com/greenlab/ingestion/internal/infrastructure/deviceregistry"
 	infraKafka "github.com/greenlab/ingestion/internal/infrastructure/kafka"
 	infraRedis "github.com/greenlab/ingestion/internal/infrastructure/redis"
+	"github.com/greenlab/ingestion/internal/telemetry"
 	ingestionHTTP "github.com/greenlab/ingestion/internal/transport/http"
 	sharedRedis "github.com/greenlab/shared/pkg/redis"
 
@@ -34,6 +35,16 @@ import (
 
 func main() {
 	cfg := config.Load()
+
+	// Initialise OpenTelemetry tracing. OTEL_ENDPOINT env var controls the OTLP
+	// HTTP exporter endpoint (e.g. "jaeger:4318"). Empty string = no-op tracer.
+	otelShutdown, err := telemetry.InitTracer(context.Background(), "ingestion", os.Getenv("OTEL_ENDPOINT"))
+	if err != nil {
+		// Non-fatal: log and continue without tracing.
+		slog.Default().Error("failed to initialise OTel tracer", "error", err)
+	} else {
+		defer otelShutdown(context.Background()) //nolint:errcheck
+	}
 
 	// Build the primary structured logger. Both the zap-based shared packages and
 	// the slog-based application layer write through the same zap JSON encoder,

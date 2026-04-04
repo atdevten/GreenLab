@@ -145,6 +145,7 @@ services:
       DEVICE_REGISTRY_URL: "http://device-registry:8002"
       REDIS_ADDR: "redis:6379"
       KAFKA_BROKERS: "kafka:9092"
+      OTEL_ENDPOINT: "jaeger:4318"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8003/health"]
       interval: 30s
@@ -273,6 +274,14 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "4318:4318"    # OTLP HTTP receiver
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
 
   nginx:
     image: nginx:1.27-alpine
