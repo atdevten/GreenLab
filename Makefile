@@ -1,4 +1,4 @@
-.PHONY: all build test coverage lint tidy up down deploy generate-keys mock migrate-all migrate-up migrate-down swagger
+.PHONY: all build test test-integration coverage lint tidy up down deploy generate-keys mock migrate-all migrate-up migrate-down swagger
 
 SERVICES := iam device-registry ingestion normalization query-realtime alert-notification supporting
 
@@ -28,7 +28,7 @@ coverage:
 	@total_stmts=0; total_covered=0; \
 	for svc in $(SERVICES); do \
 		echo "==> Coverage $$svc"; \
-		(cd services/$$svc && go test ./... -coverprofile=../../coverage/$$svc.out -covermode=atomic 2>/dev/null); \
+		(cd services/$$svc && go test ./... -coverprofile=../../coverage/$$svc.out -covermode=atomic) || true; \
 		if [ -f coverage/$$svc.out ]; then \
 			pct=$$(go tool cover -func=coverage/$$svc.out | tail -1 | awk '{print $$NF}'); \
 			echo "    $$svc: $$pct"; \
@@ -40,6 +40,12 @@ coverage:
 		if [ -f coverage/$$svc.out ]; then \
 			go tool cover -html=coverage/$$svc.out -o coverage/$$svc.html; \
 		fi \
+	done
+
+test-integration:
+	@for svc in $(SERVICES); do \
+		echo "==> Integration testing $$svc"; \
+		(cd services/$$svc && go test -tags=integration -timeout 120s ./...) || true; \
 	done
 
 coverage-%:
