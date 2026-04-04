@@ -33,8 +33,8 @@ const (
 	topicReadings = "raw.sensor.ingest"
 )
 
-// startKafka spins up a Kafka testcontainer and returns its broker address.
-// The container is terminated via t.Cleanup.
+// startKafka spins up a Kafka testcontainer, creates the required topic, and
+// returns the broker addresses. The container is terminated via t.Cleanup.
 func startKafka(t *testing.T) []string {
 	t.Helper()
 	ctx := context.Background()
@@ -45,6 +45,20 @@ func startKafka(t *testing.T) []string {
 
 	brokers, err := ctr.Brokers(ctx)
 	require.NoError(t, err, "get kafka brokers")
+
+	// Pre-create the topic so the producer (RequiredAcks=all) doesn't get
+	// "Unknown Topic Or Partition" on the first publish.
+	conn, err := kafka.Dial("tcp", brokers[0])
+	require.NoError(t, err, "dial kafka for topic creation")
+	defer conn.Close()
+
+	err = conn.CreateTopics(kafka.TopicConfig{
+		Topic:             topicReadings,
+		NumPartitions:     1,
+		ReplicationFactor: 1,
+	})
+	require.NoError(t, err, "create topic %s", topicReadings)
+
 	return brokers
 }
 
