@@ -30,7 +30,9 @@ func NewRouter(h *Handler, apiKeyLookup APIKeyLookupFunc, channelLookup ChannelL
 	r.Use(securityHeaders())
 	r.GET("/health", h.Health)
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-	r.GET("/update", h.ThingSpeak(channelLookup, logger))
+	tsHandler := h.ThingSpeak(channelLookup, logger, rdb)
+	r.GET("/update", tsHandler)
+	r.POST("/update", tsHandler)
 
 	v1 := r.Group("/v1")
 	v1.Use(apiKeyAuth(apiKeyLookup, logger))

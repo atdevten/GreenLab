@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/greenlab/ingestion/internal/domain"
 )
@@ -69,8 +70,8 @@ func NewClient(baseURL string, httpClient *http.Client) *Client {
 // the DeviceSchema for the first channel owned by the device.
 // Returns domain.ErrDeviceNotFound when device-registry returns 401.
 func (c *Client) ResolveChannelByAPIKey(ctx context.Context, apiKey string) (domain.DeviceSchema, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		c.baseURL+"/internal/resolve-channel?api_key="+apiKey, nil)
+	u := c.baseURL + "/internal/resolve-channel?" + url.Values{"api_key": {apiKey}}.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return domain.DeviceSchema{}, fmt.Errorf("Client.ResolveChannelByAPIKey new request: %w", err)
 	}

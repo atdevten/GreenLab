@@ -57,7 +57,7 @@ func (r *InternalRepo) ResolveChannelByAPIKey(ctx context.Context, apiKey string
 
 	var fields []application.FieldEntry
 	for _, row := range rows {
-		if !row.FieldName.Valid {
+		if row.ChannelID != channelID || !row.FieldName.Valid {
 			continue
 		}
 		fields = append(fields, application.FieldEntry{
