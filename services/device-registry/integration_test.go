@@ -430,7 +430,6 @@ func TestInternalRepo_ResolveChannelByAPIKey(t *testing.T) {
 // TestResolveChannel_HTTPEndpoint exercises GET /internal/resolve-channel end-to-end.
 func TestResolveChannel_HTTPEndpoint(t *testing.T) {
 	db := startPostgres(t)
-	ctx := context.Background()
 	wsID := uuid.New()
 
 	internalSvc := application.NewInternalService(postgres.NewInternalRepo(db))
