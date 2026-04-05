@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -375,6 +377,271 @@ func TestIngestResponse_IncludesChannelIDAndRequestID(t *testing.T) {
 		assert.Equal(t, 1, resp.Accepted)
 		assert.Equal(t, channelID, resp.ChannelID)
 		assert.Equal(t, testRequestID, resp.RequestID)
+		svc.AssertExpectations(t)
+	})
+}
+
+// --- ThingSpeak handler tests ---
+
+type mockChannelLookup struct{ mock.Mock }
+
+func (m *mockChannelLookup) Lookup(ctx context.Context, apiKey string) (domain.DeviceSchema, error) {
+	args := m.Called(ctx, apiKey)
+	return args.Get(0).(domain.DeviceSchema), args.Error(1)
+}
+
+func buildThingSpeakRouter(h *Handler, lookup ChannelLookupFunc) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	tsHandler := h.ThingSpeak(lookup, slog.Default(), nil) // nil rdb disables rate limiting in tests
+	r.GET("/update", tsHandler)
+	r.POST("/update", tsHandler)
+	return r
+}
+
+func doThingSpeakRequest(r *gin.Engine, query string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, "/update?"+query, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
+func TestHandler_ThingSpeak(t *testing.T) {
+	schema := domain.DeviceSchema{
+		DeviceID:  "dev-uuid-1",
+		ChannelID: "chan-uuid-1",
+		Fields: []domain.FieldEntry{
+			{Index: 1, Name: "temperature", Type: "float"},
+			{Index: 2, Name: "humidity", Type: "float"},
+		},
+		SchemaVersion: 1,
+	}
+
+	t.Run("valid field1 and field2 returns Unix timestamp", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+
+		lookup := func(_ context.Context, key string) (domain.DeviceSchema, error) {
+			if key == "valid-key" {
+				return schema, nil
+			}
+			return domain.DeviceSchema{}, domain.ErrDeviceNotFound
+		}
+
+		svc.On("Ingest", mock.Anything, mock.MatchedBy(func(in application.IngestInput) bool {
+			return in.ChannelID == "chan-uuid-1" &&
+				in.DeviceID == "dev-uuid-1" &&
+				in.Fields["temperature"] == 22.5 &&
+				in.Fields["humidity"] == 60.0
+		})).Return(nil)
+
+		r := buildThingSpeakRouter(h, lookup)
+		w := doThingSpeakRequest(r, "api_key=valid-key&field1=22.5&field2=60.0")
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		body := w.Body.String()
+		assert.NotEqual(t, "0", body)
+		// body should be a numeric Unix timestamp
+		var ts int64
+		_, err := fmt.Sscanf(body, "%d", &ts)
+		assert.NoError(t, err)
+		assert.Greater(t, ts, int64(0))
+
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("missing api_key returns 0", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+		lookup := func(_ context.Context, _ string) (domain.DeviceSchema, error) {
+			return domain.DeviceSchema{}, domain.ErrDeviceNotFound
+		}
+
+		r := buildThingSpeakRouter(h, lookup)
+		w := doThingSpeakRequest(r, "field1=10.0")
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "0", w.Body.String())
+		svc.AssertNotCalled(t, "Ingest")
+	})
+
+	t.Run("invalid api_key returns 0", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+		lookup := func(_ context.Context, _ string) (domain.DeviceSchema, error) {
+			return domain.DeviceSchema{}, domain.ErrDeviceNotFound
+		}
+
+		r := buildThingSpeakRouter(h, lookup)
+		w := doThingSpeakRequest(r, "api_key=bad-key&field1=10.0")
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "0", w.Body.String())
+		svc.AssertNotCalled(t, "Ingest")
+	})
+
+	t.Run("api_key from X-API-Key header also accepted", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+
+		lookup := func(_ context.Context, key string) (domain.DeviceSchema, error) {
+			if key == "header-key" {
+				return schema, nil
+			}
+			return domain.DeviceSchema{}, domain.ErrDeviceNotFound
+		}
+
+		svc.On("Ingest", mock.Anything, mock.Anything).Return(nil)
+
+		r := buildThingSpeakRouter(h, lookup)
+		req := httptest.NewRequest(http.MethodGet, "/update?field1=5.0", nil)
+		req.Header.Set("X-API-Key", "header-key")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.NotEqual(t, "0", w.Body.String())
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("all field params missing returns 0", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+
+		lookup := func(_ context.Context, _ string) (domain.DeviceSchema, error) {
+			return schema, nil
+		}
+
+		r := buildThingSpeakRouter(h, lookup)
+		w := doThingSpeakRequest(r, "api_key=valid-key")
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "0", w.Body.String())
+		svc.AssertNotCalled(t, "Ingest")
+	})
+
+	t.Run("field index not in schema is silently skipped", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+
+		// Schema only has field positions 1 and 2; field3 should be skipped.
+		lookup := func(_ context.Context, _ string) (domain.DeviceSchema, error) {
+			return schema, nil
+		}
+
+		svc.On("Ingest", mock.Anything, mock.MatchedBy(func(in application.IngestInput) bool {
+			_, has3 := in.Fields["field3"]
+			return len(in.Fields) == 1 && in.Fields["temperature"] == 10.0 && !has3
+		})).Return(nil)
+
+		r := buildThingSpeakRouter(h, lookup)
+		w := doThingSpeakRequest(r, "api_key=valid-key&field1=10.0&field3=99.0")
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.NotEqual(t, "0", w.Body.String())
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("empty field values are skipped", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+
+		lookup := func(_ context.Context, _ string) (domain.DeviceSchema, error) {
+			return schema, nil
+		}
+
+		svc.On("Ingest", mock.Anything, mock.MatchedBy(func(in application.IngestInput) bool {
+			return len(in.Fields) == 1 && in.Fields["temperature"] == 15.0
+		})).Return(nil)
+
+		r := buildThingSpeakRouter(h, lookup)
+		// field2 is empty string, field1 has value
+		w := doThingSpeakRequest(r, "api_key=valid-key&field1=15.0&field2=")
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.NotEqual(t, "0", w.Body.String())
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("ingest service failure returns 0", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+
+		lookup := func(_ context.Context, _ string) (domain.DeviceSchema, error) {
+			return schema, nil
+		}
+
+		svc.On("Ingest", mock.Anything, mock.Anything).Return(domain.ErrInvalidChannelID)
+
+		r := buildThingSpeakRouter(h, lookup)
+		w := doThingSpeakRequest(r, "api_key=valid-key&field1=5.0")
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "0", w.Body.String())
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("infrastructure lookup error returns 0", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+
+		lookup := func(_ context.Context, _ string) (domain.DeviceSchema, error) {
+			return domain.DeviceSchema{}, fmt.Errorf("redis unavailable")
+		}
+
+		r := buildThingSpeakRouter(h, lookup)
+		w := doThingSpeakRequest(r, "api_key=valid-key&field1=5.0")
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "0", w.Body.String())
+		svc.AssertNotCalled(t, "Ingest")
+	})
+
+	t.Run("non-numeric field value is silently skipped", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+
+		lookup := func(_ context.Context, _ string) (domain.DeviceSchema, error) {
+			return schema, nil
+		}
+
+		svc.On("Ingest", mock.Anything, mock.MatchedBy(func(in application.IngestInput) bool {
+			return len(in.Fields) == 1 && in.Fields["temperature"] == 25.0
+		})).Return(nil)
+
+		r := buildThingSpeakRouter(h, lookup)
+		// field2 value is not a number, should be skipped
+		w := doThingSpeakRequest(r, "api_key=valid-key&field1=25.0&field2=notanumber")
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.NotEqual(t, "0", w.Body.String())
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("POST with form body is accepted", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+
+		lookup := func(_ context.Context, key string) (domain.DeviceSchema, error) {
+			if key == "valid-key" {
+				return schema, nil
+			}
+			return domain.DeviceSchema{}, domain.ErrDeviceNotFound
+		}
+
+		svc.On("Ingest", mock.Anything, mock.MatchedBy(func(in application.IngestInput) bool {
+			return in.ChannelID == "chan-uuid-1" && in.Fields["temperature"] == 22.5
+		})).Return(nil)
+
+		r := buildThingSpeakRouter(h, lookup)
+		body := strings.NewReader("api_key=valid-key&field1=22.5")
+		req := httptest.NewRequest(http.MethodPost, "/update", body)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.NotEqual(t, "0", w.Body.String())
 		svc.AssertExpectations(t)
 	})
 }

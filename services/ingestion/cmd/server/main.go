@@ -70,7 +70,7 @@ func main() {
 
 	svc := application.NewIngestService(producer, slog.Default(), cfg.Ingest.MaxReadingAge)
 	handler := ingestionHTTP.NewHandler(svc, slog.Default())
-	router := ingestionHTTP.NewRouter(handler, apiKeyValidator.Validate, slog.Default(), rdb)
+	router := ingestionHTTP.NewRouter(handler, apiKeyValidator.Validate, deviceRegistryClient.ResolveChannelByAPIKey, slog.Default(), rdb)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.HTTP.Port,

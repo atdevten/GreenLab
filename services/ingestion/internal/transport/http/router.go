@@ -20,13 +20,19 @@ import (
 // APIKeyLookupFunc validates an API key + channelID pair and returns the device schema.
 type APIKeyLookupFunc func(ctx context.Context, key, channelID string) (domain.DeviceSchema, error)
 
-func NewRouter(h *Handler, apiKeyLookup APIKeyLookupFunc, logger *slog.Logger, rdb *redis.Client) *gin.Engine {
+// ChannelLookupFunc resolves a channel by API key alone (ThingSpeak-style).
+type ChannelLookupFunc func(ctx context.Context, apiKey string) (domain.DeviceSchema, error)
+
+func NewRouter(h *Handler, apiKeyLookup APIKeyLookupFunc, channelLookup ChannelLookupFunc, logger *slog.Logger, rdb *redis.Client) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(sharedMiddleware.RequestID())
 	r.Use(securityHeaders())
 	r.GET("/health", h.Health)
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	tsHandler := h.ThingSpeak(channelLookup, logger, rdb)
+	r.GET("/update", tsHandler)
+	r.POST("/update", tsHandler)
 
 	v1 := r.Group("/v1")
 	v1.Use(apiKeyAuth(apiKeyLookup, logger))

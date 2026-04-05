@@ -97,7 +97,7 @@ func newTestRouter(t *testing.T, brokers []string, rdb *redis.Client) *gin.Engin
 	svc := application.NewIngestService(producer, slog.Default(), 0 /* no max age in tests */)
 	handler := transporthttp.NewHandler(svc, slog.Default())
 
-	return transporthttp.NewRouter(handler, stubLookup, slog.Default(), rdb)
+	return transporthttp.NewRouter(handler, stubLookup, stubChannelLookup, slog.Default(), rdb)
 }
 
 // newAuthOnlyRouter builds a router without a real Kafka producer — only the auth
@@ -111,13 +111,21 @@ func newAuthOnlyRouter(t *testing.T, rdb *redis.Client) *gin.Engine {
 	svc := application.NewIngestService(noopPublisher{}, slog.Default(), 0)
 	handler := transporthttp.NewHandler(svc, slog.Default())
 
-	return transporthttp.NewRouter(handler, stubLookup, slog.Default(), rdb)
+	return transporthttp.NewRouter(handler, stubLookup, stubChannelLookup, slog.Default(), rdb)
 }
 
 // stubLookup accepts only testAPIKey; everything else returns ErrDeviceNotFound.
 func stubLookup(_ context.Context, key, channelID string) (domain.DeviceSchema, error) {
 	if key == testAPIKey {
 		return domain.DeviceSchema{DeviceID: testDeviceID, ChannelID: channelID}, nil
+	}
+	return domain.DeviceSchema{}, domain.ErrDeviceNotFound
+}
+
+// stubChannelLookup resolves a channel by API key alone (ThingSpeak-style).
+func stubChannelLookup(_ context.Context, key string) (domain.DeviceSchema, error) {
+	if key == testAPIKey {
+		return domain.DeviceSchema{DeviceID: testDeviceID, ChannelID: testChannelID}, nil
 	}
 	return domain.DeviceSchema{}, domain.ErrDeviceNotFound
 }

@@ -14,6 +14,7 @@ import (
 // internalService is the interface the internal handler depends on.
 type internalService interface {
 	ValidateAPIKey(ctx context.Context, apiKey, channelID string) (application.ValidateAPIKeyResult, error)
+	ResolveChannelByAPIKey(ctx context.Context, apiKey string) (application.ResolveChannelResult, error)
 }
 
 // InternalHandler serves machine-to-machine endpoints (no JWT auth).
@@ -47,6 +48,14 @@ type validateAPIKeyResponse struct {
 
 // schemaResponse is the response body for GET /v1/channels/:id/schema.
 type schemaResponse struct {
+	Fields        []fieldEntryResponse `json:"fields"`
+	SchemaVersion uint32               `json:"schema_version"`
+}
+
+// resolveChannelResponse is the response body for GET /internal/resolve-channel.
+type resolveChannelResponse struct {
+	DeviceID      string               `json:"device_id"`
+	ChannelID     string               `json:"channel_id"`
 	Fields        []fieldEntryResponse `json:"fields"`
 	SchemaVersion uint32               `json:"schema_version"`
 }
@@ -88,6 +97,45 @@ func (h *InternalHandler) GetChannelSchema(c *gin.Context) {
 	}
 
 	response.OK(c, schemaResponse{
+		Fields:        fields,
+		SchemaVersion: result.SchemaVersion,
+	})
+}
+
+// ResolveChannel godoc
+// @Summary      Resolve the first channel owned by the device for a given API key (internal)
+// @Tags         internal
+// @Produce      json
+// @Param        api_key  query     string  true  "Device API key"
+// @Success      200      {object}  resolveChannelResponse
+// @Failure      400      {object}  map[string]interface{}
+// @Failure      401      {object}  map[string]interface{}
+// @Router       /internal/resolve-channel [get]
+func (h *InternalHandler) ResolveChannel(c *gin.Context) {
+	apiKey := c.Query("api_key")
+	if apiKey == "" {
+		response.Error(c, apierr.BadRequest("missing api_key query parameter"))
+		return
+	}
+
+	result, err := h.svc.ResolveChannelByAPIKey(c.Request.Context(), apiKey)
+	if err != nil {
+		if errors.Is(err, device.ErrDeviceNotFound) {
+			response.Error(c, apierr.Unauthorized("invalid API key"))
+			return
+		}
+		response.Error(c, apierr.ErrInternalServerError)
+		return
+	}
+
+	fields := make([]fieldEntryResponse, len(result.Fields))
+	for i, f := range result.Fields {
+		fields[i] = fieldEntryResponse{Index: f.Index, Name: f.Name, Type: f.Type}
+	}
+
+	response.OK(c, resolveChannelResponse{
+		DeviceID:      result.DeviceID,
+		ChannelID:     result.ChannelID,
 		Fields:        fields,
 		SchemaVersion: result.SchemaVersion,
 	})
