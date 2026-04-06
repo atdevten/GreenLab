@@ -80,7 +80,7 @@ func (h *DeviceHandler) CreateDevice(c *gin.Context) {
 		response.Error(c, mapDeviceError(err))
 		return
 	}
-	response.Created(c, toDeviceResponse(d, true))
+	response.Created(c, toDeviceResponse(d))
 }
 
 // GetDevice godoc
@@ -98,7 +98,7 @@ func (h *DeviceHandler) GetDevice(c *gin.Context) {
 		response.Error(c, mapDeviceError(err))
 		return
 	}
-	response.OK(c, toDeviceResponse(d, false))
+	response.OK(c, toDeviceResponse(d))
 }
 
 // ListDevices godoc
@@ -126,7 +126,7 @@ func (h *DeviceHandler) ListDevices(c *gin.Context) {
 	}
 	items := make([]*DeviceResponse, len(devices))
 	for i, d := range devices {
-		items[i] = toDeviceResponse(d, false)
+		items[i] = toDeviceResponse(d)
 	}
 	response.OKWithMeta(c, items, pagination.NewOffsetResult(items, total, page))
 }
@@ -156,7 +156,7 @@ func (h *DeviceHandler) UpdateDevice(c *gin.Context) {
 		response.Error(c, mapDeviceError(err))
 		return
 	}
-	response.OK(c, toDeviceResponse(d, false))
+	response.OK(c, toDeviceResponse(d))
 }
 
 // RotateAPIKey godoc
@@ -174,7 +174,7 @@ func (h *DeviceHandler) RotateAPIKey(c *gin.Context) {
 		response.Error(c, mapDeviceError(err))
 		return
 	}
-	response.OK(c, toDeviceResponse(d, true))
+	response.OK(c, toDeviceResponse(d))
 }
 
 // DeleteDevice godoc
@@ -218,20 +218,17 @@ func (h *DeviceHandler) ListByWorkspace(c *gin.Context) {
 	}
 	items := make([]*DeviceResponse, len(devices))
 	for i, d := range devices {
-		items[i] = toDeviceResponse(d, false)
+		items[i] = toDeviceResponse(d)
 	}
 	response.OKWithMeta(c, items, pagination.NewOffsetResult(items, total, page))
 }
 
-func toDeviceResponse(d *device.Device, showKey bool) *DeviceResponse {
-	r := &DeviceResponse{
+func toDeviceResponse(d *device.Device) *DeviceResponse {
+	return &DeviceResponse{
 		ID: d.ID.String(), WorkspaceID: d.WorkspaceID.String(),
 		Name: d.Name, Description: d.Description,
 		Status: string(d.Status), Metadata: d.Metadata,
+		APIKey:     d.APIKey,
 		LastSeenAt: d.LastSeenAt, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 	}
-	if showKey {
-		r.APIKey = d.APIKey
-	}
-	return r
 }
