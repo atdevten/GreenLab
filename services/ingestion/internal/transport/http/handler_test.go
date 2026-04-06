@@ -34,6 +34,10 @@ func (m *mockIngestService) IngestBatch(ctx context.Context, readings []applicat
 	return m.Called(ctx, readings).Error(0)
 }
 
+func (m *mockIngestService) IngestReplay(ctx context.Context, inputs []application.IngestInput, windowDays int, dlq application.ReplayDLQWriter) error {
+	return m.Called(ctx, inputs, windowDays, dlq).Error(0)
+}
+
 // --- test helpers ---
 
 func newTestHandler(svc ingestService) *Handler {
@@ -54,6 +58,7 @@ func buildRouter(h *Handler, schema domain.DeviceSchema) *gin.Engine {
 	})
 	r.POST("/v1/channels/:channel_id/data", h.Ingest)
 	r.POST("/v1/channels/:channel_id/data/bulk", h.BulkIngest)
+	r.POST("/v1/channels/:channel_id/replay", h.Replay)
 	return r
 }
 
@@ -749,6 +754,194 @@ func TestHandler_ThingSpeak(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.NotEqual(t, "0", w.Body.String())
 		svc.AssertExpectations(t)
+	})
+}
+
+// --- Replay handler tests ---
+
+// mockReplayDLQ is a no-op DLQ implementation used as a stub in handler tests.
+type mockReplayDLQ struct{ mock.Mock }
+
+func (m *mockReplayDLQ) Push(ctx context.Context, entry application.ReplayDLQEntry) error {
+	return m.Called(ctx, entry).Error(0)
+}
+
+func (m *mockReplayDLQ) IncrFailureMetric(ctx context.Context) error {
+	return m.Called(ctx).Error(0)
+}
+
+func TestHandler_Replay(t *testing.T) {
+	channelID := testSchema.ChannelID
+
+	buildReplayRouter := func(h *Handler, schema domain.DeviceSchema) *gin.Engine {
+		gin.SetMode(gin.TestMode)
+		r := gin.New()
+		r.Use(func(c *gin.Context) {
+			c.Set("device_schema", schema)
+			c.Set("device_id", schema.DeviceID)
+			c.Set("request_id", testRequestID)
+			c.Next()
+		})
+		r.POST("/v1/channels/:channel_id/replay", h.Replay)
+		return r
+	}
+
+	t.Run("valid replay batch returns 201", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+		r := buildReplayRouter(h, testSchema)
+
+		ts := time.Now().UTC().Add(-2 * time.Hour)
+		svc.On("IngestReplay", mock.Anything, mock.MatchedBy(func(inputs []application.IngestInput) bool {
+			return len(inputs) == 2 && inputs[0].ChannelID == channelID
+		}), defaultReplayWindowDays, application.ReplayDLQWriter(nil)).Return(nil)
+
+		body, _ := json.Marshal(map[string]any{
+			"readings": []map[string]any{
+				{"fields": map[string]float64{"temp": 22.5}, "timestamp": ts},
+				{"fields": map[string]float64{"temp": 23.0}, "timestamp": ts},
+			},
+		})
+		w := doRequest(r, "POST", "/v1/channels/"+channelID+"/replay", body, "application/json")
+		assert.Equal(t, http.StatusCreated, w.Code)
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("missing fields returns 422", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+		r := buildReplayRouter(h, testSchema)
+
+		body, _ := json.Marshal(map[string]any{
+			"readings": []map[string]any{
+				{"timestamp": time.Now().UTC().Add(-1 * time.Hour)}, // no fields
+			},
+		})
+		w := doRequest(r, "POST", "/v1/channels/"+channelID+"/replay", body, "application/json")
+		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+		svc.AssertNotCalled(t, "IngestReplay")
+	})
+
+	t.Run("empty readings list returns 422", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+		r := buildReplayRouter(h, testSchema)
+
+		body, _ := json.Marshal(map[string]any{"readings": []map[string]any{}})
+		w := doRequest(r, "POST", "/v1/channels/"+channelID+"/replay", body, "application/json")
+		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+		svc.AssertNotCalled(t, "IngestReplay")
+	})
+
+	t.Run("timestamp outside replay window returns 400", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+		r := buildReplayRouter(h, testSchema)
+
+		svc.On("IngestReplay", mock.Anything, mock.Anything, defaultReplayWindowDays, application.ReplayDLQWriter(nil)).
+			Return(domain.ErrTimestampOutOfReplayWindow)
+
+		ts := time.Now().UTC().Add(-60 * 24 * time.Hour)
+		body, _ := json.Marshal(map[string]any{
+			"readings": []map[string]any{
+				{"fields": map[string]float64{"temp": 1.0}, "timestamp": ts},
+			},
+		})
+		w := doRequest(r, "POST", "/v1/channels/"+channelID+"/replay", body, "application/json")
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		var resp struct {
+			Error struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		assert.Equal(t, "bad_request", resp.Error.Code)
+		assert.Contains(t, resp.Error.Message, "timestamp_out_of_replay_window")
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("kafka failure with DLQ wired returns 202 with queued_for_retry", func(t *testing.T) {
+		svc := &mockIngestService{}
+		dlq := &mockReplayDLQ{}
+		h := newTestHandler(svc).WithReplayDLQ(dlq)
+		r := buildReplayRouter(h, testSchema)
+
+		kafkaErr := fmt.Errorf("kafka unavailable")
+		svc.On("IngestReplay", mock.Anything, mock.Anything, defaultReplayWindowDays, dlq).
+			Return(kafkaErr)
+
+		ts := time.Now().UTC().Add(-1 * time.Hour)
+		body, _ := json.Marshal(map[string]any{
+			"readings": []map[string]any{
+				{"fields": map[string]float64{"temp": 5.0}, "timestamp": ts},
+				{"fields": map[string]float64{"temp": 6.0}, "timestamp": ts},
+			},
+		})
+		w := doRequest(r, "POST", "/v1/channels/"+channelID+"/replay", body, "application/json")
+		assert.Equal(t, http.StatusAccepted, w.Code)
+
+		var resp struct {
+			Data struct {
+				Accepted       int `json:"accepted"`
+				QueuedForRetry int `json:"queued_for_retry"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		assert.Equal(t, 0, resp.Data.Accepted)
+		assert.Equal(t, 2, resp.Data.QueuedForRetry)
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("kafka failure without DLQ returns 503", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc) // no DLQ wired
+		r := buildReplayRouter(h, testSchema)
+
+		kafkaErr := fmt.Errorf("kafka unavailable")
+		svc.On("IngestReplay", mock.Anything, mock.Anything, defaultReplayWindowDays, application.ReplayDLQWriter(nil)).
+			Return(kafkaErr)
+
+		ts := time.Now().UTC().Add(-1 * time.Hour)
+		body, _ := json.Marshal(map[string]any{
+			"readings": []map[string]any{
+				{"fields": map[string]float64{"temp": 5.0}, "timestamp": ts},
+			},
+		})
+		w := doRequest(r, "POST", "/v1/channels/"+channelID+"/replay", body, "application/json")
+		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("missing device_schema in context returns 500", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+
+		gin.SetMode(gin.TestMode)
+		r := gin.New()
+		// No device_schema set in middleware
+		r.POST("/v1/channels/:channel_id/replay", h.Replay)
+
+		ts := time.Now().UTC().Add(-1 * time.Hour)
+		body, _ := json.Marshal(map[string]any{
+			"readings": []map[string]any{
+				{"fields": map[string]float64{"temp": 1.0}, "timestamp": ts},
+			},
+		})
+		w := doRequest(r, "POST", "/v1/channels/"+channelID+"/replay", body, "application/json")
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		svc.AssertNotCalled(t, "IngestReplay")
+	})
+
+	t.Run("malformed JSON body returns 400", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+		r := buildReplayRouter(h, testSchema)
+
+		w := doRequest(r, "POST", "/v1/channels/"+channelID+"/replay", []byte("{invalid}"), "application/json")
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		svc.AssertNotCalled(t, "IngestReplay")
 	})
 }
 

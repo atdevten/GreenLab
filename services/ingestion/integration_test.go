@@ -134,6 +134,9 @@ func stubChannelLookup(_ context.Context, key string) (domain.DeviceSchema, erro
 type noopPublisher struct{}
 
 func (noopPublisher) PublishReadings(_ context.Context, _ []*domain.Reading) error { return nil }
+func (noopPublisher) PublishReplayReadings(_ context.Context, _ []*domain.Reading) error {
+	return nil
+}
 
 // readKafkaMessages reads exactly count messages from topic and unmarshals each into a map.
 // Fails the test if count messages are not received within timeout.

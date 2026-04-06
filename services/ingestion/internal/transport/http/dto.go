@@ -28,3 +28,24 @@ type IngestResponse struct {
 	ChannelID string    `json:"channel_id"`
 	RequestID string    `json:"request_id"`
 }
+
+// ReplayReadingRequest is a single reading in a replay batch.
+type ReplayReadingRequest struct {
+	Fields    map[string]float64 `json:"fields"     validate:"required"`
+	Timestamp time.Time          `json:"timestamp"`
+}
+
+// ReplayRequest contains a batch of replay readings.
+type ReplayRequest struct {
+	Readings []ReplayReadingRequest `json:"readings" validate:"required,min=1,max=1000,dive"`
+}
+
+// ReplayResponse acknowledges a replay request.
+// QueuedForRetry is non-zero when Kafka was unavailable and readings were
+// written to the DLQ instead of published immediately.
+type ReplayResponse struct {
+	Accepted       int    `json:"accepted"`
+	QueuedForRetry int    `json:"queued_for_retry"`
+	ChannelID      string `json:"channel_id"`
+	RequestID      string `json:"request_id"`
+}

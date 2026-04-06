@@ -10,8 +10,9 @@ var (
 	ErrEmptyFields      = errors.New("fields must not be empty")
 	ErrCacheMiss        = errors.New("cache miss")
 	ErrDeviceNotFound   = errors.New("device not found")
-	ErrTimestampTooOld  = errors.New("timestamp is too far in the past")
-	ErrTimestampFuture  = errors.New("timestamp is in the future")
+	ErrTimestampTooOld              = errors.New("timestamp is too far in the past")
+	ErrTimestampFuture              = errors.New("timestamp is in the future")
+	ErrTimestampOutOfReplayWindow   = errors.New("timestamp_out_of_replay_window")
 
 	// Compact format errors
 	ErrSchemaMismatch       = errors.New("schema_version mismatch")
