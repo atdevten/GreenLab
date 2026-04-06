@@ -57,7 +57,12 @@ func (r *InternalRepo) ResolveChannelByAPIKey(ctx context.Context, apiKey string
 
 	var fields []application.FieldEntry
 	for _, row := range rows {
-		if row.ChannelID != channelID || !row.FieldName.Valid {
+		// Only include fields belonging to the first channel; rows are ordered by
+		// c.created_at ASC so fields from subsequent channels appear at the end.
+		if row.ChannelID != channelID {
+			break
+		}
+		if !row.FieldName.Valid {
 			continue
 		}
 		fields = append(fields, application.FieldEntry{
@@ -70,12 +75,16 @@ func (r *InternalRepo) ResolveChannelByAPIKey(ctx context.Context, apiKey string
 		fields = []application.FieldEntry{}
 	}
 
+	// TODO: query schema_version from the channels table once the column is added
+	// (migration pending). Until then the OTA 409 path is gated by schema_version != 0
+	// in deserializeCompact, so returning 0 here disables the check rather than
+	// incorrectly claiming version 1.
 	return application.ResolveChannelResult{
 		ChannelID: channelID,
 		ValidateAPIKeyResult: application.ValidateAPIKeyResult{
 			DeviceID:      deviceID,
 			Fields:        fields,
-			SchemaVersion: 1,
+			SchemaVersion: 0,
 		},
 	}, nil
 }

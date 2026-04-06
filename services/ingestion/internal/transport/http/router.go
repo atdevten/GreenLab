@@ -42,15 +42,18 @@ func NewRouter(h *Handler, apiKeyLookup APIKeyLookupFunc, channelLookup ChannelL
 		KeyFunc:  sharedMiddleware.APIKeyKeyFunc,
 		Logger:   logger,
 	}))
-	v1.Use(sharedMiddleware.RateLimit(rdb, sharedMiddleware.RateLimitConfig{
+	// Per-channel rate limit scoped only to channel data routes to avoid applying
+	// IP-based fallback limiting to future v1 routes without a channel_id.
+	channelData := v1.Group("/channels/:channel_id")
+	channelData.Use(sharedMiddleware.RateLimit(rdb, sharedMiddleware.RateLimitConfig{
 		Requests: 10,
 		Window:   time.Second,
 		KeyFunc:  sharedMiddleware.ChannelIDKeyFunc,
 		Logger:   logger,
 	}))
 	{
-		v1.POST("/channels/:channel_id/data", h.Ingest)
-		v1.POST("/channels/:channel_id/data/bulk", h.BulkIngest)
+		channelData.POST("/data", h.Ingest)
+		channelData.POST("/data/bulk", h.BulkIngest)
 	}
 	return r
 }
