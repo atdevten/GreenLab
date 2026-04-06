@@ -213,6 +213,78 @@ func TestHandler_Ingest_Binary(t *testing.T) {
 	})
 }
 
+func TestHandler_Ingest_SchemaMismatch(t *testing.T) {
+	channelID := uuid.New().String()
+	schema := domain.DeviceSchema{
+		DeviceID:      "dev-uuid-1",
+		ChannelID:     channelID,
+		Fields:        []domain.FieldEntry{{Index: 1, Name: "temperature", Type: "float"}},
+		SchemaVersion: 5, // server is at version 5
+	}
+
+	t.Run("ojson with wrong schema_version returns 409 with current_version and schema_url", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+		r := buildRouter(h, schema)
+
+		// Device sends sv=3, server has sv=5.
+		body := []byte(`{"f":[42.5],"sv":3}`)
+		w := doRequest(r, "POST", "/v1/channels/"+channelID+"/data", body, ctOJSON)
+
+		require.Equal(t, http.StatusConflict, w.Code)
+
+		var resp struct {
+			Success bool `json:"success"`
+			Error   struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+				Details struct {
+					CurrentVersion uint32 `json:"current_version"`
+					SchemaURL      string `json:"schema_url"`
+				} `json:"details"`
+			} `json:"error"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		assert.False(t, resp.Success)
+		assert.Equal(t, "schema_version_mismatch", resp.Error.Code)
+		assert.Equal(t, uint32(5), resp.Error.Details.CurrentVersion)
+		assert.Equal(t, "/v1/channels/"+channelID+"/schema", resp.Error.Details.SchemaURL)
+		svc.AssertNotCalled(t, "IngestBatch")
+	})
+
+	t.Run("msgpack with wrong schema_version returns 409 with current_version and schema_url", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+		r := buildRouter(h, schema)
+
+		// Device sends sv=2, server has sv=5.
+		payload := map[string]any{"f": []float64{10.0}, "sv": uint32(2)}
+		body, err := msgpack.Marshal(payload)
+		require.NoError(t, err)
+
+		w := doRequest(r, "POST", "/v1/channels/"+channelID+"/data", body, ctMsgPack)
+
+		require.Equal(t, http.StatusConflict, w.Code)
+
+		var resp struct {
+			Success bool `json:"success"`
+			Error   struct {
+				Code    string `json:"code"`
+				Details struct {
+					CurrentVersion uint32 `json:"current_version"`
+					SchemaURL      string `json:"schema_url"`
+				} `json:"details"`
+			} `json:"error"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		assert.False(t, resp.Success)
+		assert.Equal(t, "schema_version_mismatch", resp.Error.Code)
+		assert.Equal(t, uint32(5), resp.Error.Details.CurrentVersion)
+		assert.Equal(t, "/v1/channels/"+channelID+"/schema", resp.Error.Details.SchemaURL)
+		svc.AssertNotCalled(t, "IngestBatch")
+	})
+}
+
 func TestHandler_Ingest_ContentTypeDispatch(t *testing.T) {
 	channelID := uuid.New().String()
 
@@ -264,7 +336,7 @@ func TestHandler_BulkIngest_JSON(t *testing.T) {
 func TestHandler_ErrorToHTTPResponse(t *testing.T) {
 	channelID := uuid.New().String()
 
-	t.Run("ErrSchemaMismatch returns 409", func(t *testing.T) {
+	t.Run("ErrSchemaMismatch sentinel returns 409", func(t *testing.T) {
 		svc := &mockIngestService{}
 		h := newTestHandler(svc)
 		r := buildRouter(h, testSchema)
@@ -274,6 +346,40 @@ func TestHandler_ErrorToHTTPResponse(t *testing.T) {
 		body, _ := json.Marshal(map[string]any{"fields": map[string]float64{"temp": 1.0}})
 		w := doRequest(r, "POST", "/v1/channels/"+channelID+"/data", body, "application/json")
 		assert.Equal(t, http.StatusConflict, w.Code)
+	})
+
+	t.Run("SchemaMismatchError returns 409 with current_version and schema_url", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+		r := buildRouter(h, testSchema)
+
+		schemaMismatchErr := &domain.SchemaMismatchError{
+			CurrentVersion: 7,
+			ChannelID:      channelID,
+		}
+		svc.On("Ingest", mock.Anything, mock.Anything).Return(schemaMismatchErr)
+
+		body, _ := json.Marshal(map[string]any{"fields": map[string]float64{"temp": 1.0}})
+		w := doRequest(r, "POST", "/v1/channels/"+channelID+"/data", body, "application/json")
+
+		require.Equal(t, http.StatusConflict, w.Code)
+
+		var resp struct {
+			Success bool `json:"success"`
+			Error   struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+				Details struct {
+					CurrentVersion uint32 `json:"current_version"`
+					SchemaURL      string `json:"schema_url"`
+				} `json:"details"`
+			} `json:"error"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		assert.False(t, resp.Success)
+		assert.Equal(t, "schema_version_mismatch", resp.Error.Code)
+		assert.Equal(t, uint32(7), resp.Error.Details.CurrentVersion)
+		assert.Equal(t, "/v1/channels/"+channelID+"/schema", resp.Error.Details.SchemaURL)
 	})
 
 	t.Run("ErrDeviceIDMismatch returns 403", func(t *testing.T) {

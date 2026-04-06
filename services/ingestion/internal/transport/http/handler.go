@@ -143,7 +143,7 @@ func (h *Handler) ingestCompact(c *gin.Context, channelID string, schema domain.
 		return
 	}
 
-	inputs, err := deserializeCompact(body, schema, d)
+	inputs, err := deserializeCompact(body, schema, d, channelID)
 	if err != nil {
 		errorToHTTPResponse(c, err, h.logger)
 		return
@@ -345,6 +345,23 @@ func (h *Handler) ThingSpeak(lookup ChannelLookupFunc, logger *slog.Logger, rdb 
 
 // errorToHTTPResponse maps domain errors to appropriate HTTP responses.
 func errorToHTTPResponse(c *gin.Context, err error, logger *slog.Logger) {
+	var schemaMismatch *domain.SchemaMismatchError
+	if errors.As(err, &schemaMismatch) {
+		schemaURL := fmt.Sprintf("/v1/channels/%s/schema", schemaMismatch.ChannelID)
+		c.JSON(http.StatusConflict, response.Envelope{
+			Success: false,
+			Error: &response.ErrBody{
+				Code:    "schema_version_mismatch",
+				Message: schemaMismatch.Error(),
+				Details: gin.H{
+					"current_version": schemaMismatch.CurrentVersion,
+					"schema_url":      schemaURL,
+				},
+			},
+		})
+		return
+	}
+
 	switch {
 	case errors.Is(err, domain.ErrSchemaMismatch):
 		response.Error(c, apierr.New(http.StatusConflict, "schema_version_mismatch", err.Error()))
