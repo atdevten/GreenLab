@@ -90,6 +90,9 @@ func main() {
 	internalRepo := infraPostgres.NewInternalRepo(db)
 	internalSvc := application.NewInternalService(internalRepo)
 
+	// Schema deprecation store
+	schemaDeprecStore := infraRedis.NewSchemaDeprecationStore(rdb)
+
 	// Handlers & router
 	deviceHandler := registryHTTP.NewDeviceHandler(deviceSvc)
 	channelHandler := registryHTTP.NewChannelHandler(channelSvc)
@@ -97,7 +100,8 @@ func main() {
 	internalHandler := registryHTTP.NewInternalHandler(internalSvc)
 	provisionHandler := registryHTTP.NewProvisionHandler(provisionSvc)
 	adminHandler := registryHTTP.NewAdminHandler(storageSvc)
-	router := registryHTTP.NewRouter(deviceHandler, channelHandler, fieldHandler, internalHandler, provisionHandler, adminHandler, publicKey)
+	schemaHandler := registryHTTP.NewSchemaHandler(channelSvc, schemaDeprecStore)
+	router := registryHTTP.NewRouter(deviceHandler, channelHandler, fieldHandler, internalHandler, provisionHandler, adminHandler, schemaHandler, publicKey)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.HTTP.Port,

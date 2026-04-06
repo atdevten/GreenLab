@@ -95,7 +95,7 @@ func newTestRouter(t *testing.T, brokers []string, rdb *redis.Client) *gin.Engin
 	t.Cleanup(func() { _ = producer.Close() })
 
 	svc := application.NewIngestService(producer, slog.Default(), 0 /* no max age in tests */)
-	handler := transporthttp.NewHandler(svc, slog.Default())
+	handler := transporthttp.NewHandler(svc, slog.Default(), nil)
 
 	return transporthttp.NewRouter(handler, stubLookup, stubChannelLookup, slog.Default(), rdb)
 }
@@ -109,7 +109,7 @@ func newAuthOnlyRouter(t *testing.T, rdb *redis.Client) *gin.Engine {
 
 	// noopPublisher satisfies EventPublisher but never touches Kafka.
 	svc := application.NewIngestService(noopPublisher{}, slog.Default(), 0)
-	handler := transporthttp.NewHandler(svc, slog.Default())
+	handler := transporthttp.NewHandler(svc, slog.Default(), nil)
 
 	return transporthttp.NewRouter(handler, stubLookup, stubChannelLookup, slog.Default(), rdb)
 }

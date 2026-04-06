@@ -19,7 +19,7 @@ func securityHeaders() gin.HandlerFunc {
 	}
 }
 
-func NewRouter(deviceH *DeviceHandler, channelH *ChannelHandler, fieldH *FieldHandler, internalH *InternalHandler, provisionH *ProvisionHandler, adminH *AdminHandler, publicKey *rsa.PublicKey) *gin.Engine {
+func NewRouter(deviceH *DeviceHandler, channelH *ChannelHandler, fieldH *FieldHandler, internalH *InternalHandler, provisionH *ProvisionHandler, adminH *AdminHandler, schemaH *SchemaHandler, publicKey *rsa.PublicKey) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(sharedMiddleware.RequestID())
@@ -53,6 +53,7 @@ func NewRouter(deviceH *DeviceHandler, channelH *ChannelHandler, fieldH *FieldHa
 			channels.GET("/:id", channelH.GetChannel)
 			channels.PUT("/:id", channelH.UpdateChannel)
 			channels.DELETE("/:id", channelH.DeleteChannel)
+			channels.POST("/:id/schema/force-deprecate", schemaH.ForceDeprecateSchema)
 		}
 
 		fields := v1.Group("/fields")
