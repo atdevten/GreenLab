@@ -69,6 +69,11 @@ func RateLimit(rdb *redis.Client, cfg RateLimitConfig) gin.HandlerFunc {
 		c.Header("X-RateLimit-Reset", strconv.FormatInt(now.Add(cfg.Window).Unix(), 10))
 
 		if count >= int64(cfg.Requests) {
+			retryAfter := int(cfg.Window.Seconds())
+			if retryAfter < 1 {
+				retryAfter = 1
+			}
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 				"error": "rate limit exceeded",
 			})
@@ -100,6 +105,21 @@ func APIKeyKeyFunc(c *gin.Context) string {
 		if s, ok := key.(string); ok && s != "" {
 			return s
 		}
+	}
+	return c.ClientIP()
+}
+
+// ChannelIDKeyFunc extracts the channel_id from context as the rate limit key.
+// Falls back to the URL param "channel_id" if the context value is absent, and
+// finally to the client IP so the middleware always returns a non-empty key.
+func ChannelIDKeyFunc(c *gin.Context) string {
+	if v, ok := c.Get("channel_id"); ok {
+		if s, ok := v.(string); ok && s != "" {
+			return "channel:" + s
+		}
+	}
+	if id := c.Param("channel_id"); id != "" {
+		return "channel:" + id
 	}
 	return c.ClientIP()
 }
