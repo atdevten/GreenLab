@@ -224,14 +224,15 @@ func (h *DeviceHandler) ListByWorkspace(c *gin.Context) {
 }
 
 func toDeviceResponse(d *device.Device, showKey bool) *DeviceResponse {
-	r := &DeviceResponse{
+	apiKey := ""
+	if showKey {
+		apiKey = d.APIKey
+	}
+	return &DeviceResponse{
 		ID: d.ID.String(), WorkspaceID: d.WorkspaceID.String(),
 		Name: d.Name, Description: d.Description,
 		Status: string(d.Status), Metadata: d.Metadata,
+		APIKey:     apiKey,
 		LastSeenAt: d.LastSeenAt, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 	}
-	if showKey {
-		r.APIKey = d.APIKey
-	}
-	return r
 }
