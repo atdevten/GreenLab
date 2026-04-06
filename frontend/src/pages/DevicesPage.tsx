@@ -596,9 +596,38 @@ function DeviceCard({
   const [copied, setCopied] = useState(false)
 
   function copyKey() {
-    navigator.clipboard.writeText(device.apiKey).catch(() => {})
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    const key = device.apiKey
+    const done = () => { setCopied(true); setTimeout(() => setCopied(false), 2000) }
+
+    if (!key) { done(); return }   // still show feedback even if key is empty
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(key).then(done).catch(() => {
+        try {
+          const el = document.createElement('textarea')
+          el.value = key
+          el.style.cssText = 'position:fixed;opacity:0;top:0;left:0'
+          document.body.appendChild(el)
+          el.focus()
+          el.select()
+          document.execCommand('copy')
+          document.body.removeChild(el)
+        } catch (_) { /* ignore */ }
+        done()
+      })
+    } else {
+      try {
+        const el = document.createElement('textarea')
+        el.value = key
+        el.style.cssText = 'position:fixed;opacity:0;top:0;left:0'
+        document.body.appendChild(el)
+        el.focus()
+        el.select()
+        document.execCommand('copy')
+        document.body.removeChild(el)
+      } catch (_) { /* ignore */ }
+      done()
+    }
   }
 
   const isBlocked = device.status === 'Blocked'
@@ -651,19 +680,36 @@ function DeviceCard({
         </span>
 
         {/* Copy */}
-        <button
-          title="Copy API key"
-          onClick={copyKey}
-          disabled={isBlocked}
-          style={{
-            padding: '3px 7px', borderRadius: 'var(--radius)', fontSize: 11,
-            color: copied ? 'var(--green)' : 'var(--muted)',
-            background: 'transparent', border: '1px solid var(--border)',
-            cursor: isBlocked ? 'default' : 'pointer', whiteSpace: 'nowrap',
-          }}
-        >
-          {copied ? '✓' : '⎘'}
-        </button>
+        <div style={{ position: 'relative', display: 'inline-flex' }}>
+          {copied && (
+            <span style={{
+              position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'var(--green)', color: '#fff',
+              fontSize: 10, fontFamily: 'sans-serif', fontWeight: 600,
+              padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap',
+              pointerEvents: 'none',
+              animation: 'fadeInUp 0.15s ease',
+            }}>
+              Copied!
+            </span>
+          )}
+          <button
+            title="Copy API key"
+            onClick={copyKey}
+            disabled={isBlocked}
+            style={{
+              padding: '3px 7px', borderRadius: 'var(--radius)', fontSize: 11,
+              color: copied ? 'var(--green)' : 'var(--muted)',
+              background: copied ? 'rgba(34,197,94,.08)' : 'transparent',
+              border: `1px solid ${copied ? 'var(--green)' : 'var(--border)'}`,
+              cursor: isBlocked ? 'default' : 'pointer', whiteSpace: 'nowrap',
+              transition: 'color 0.2s, background 0.2s, border-color 0.2s',
+            }}
+          >
+            {copied ? '✓ Copied' : '⎘ Copy'}
+          </button>
+        </div>
 
         {/* Rotate */}
         {!isBlocked && (
