@@ -28,3 +28,10 @@ build/
 coverage/
 .claude/agents/go-backend-implementer.md
 scripts/scripts
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
