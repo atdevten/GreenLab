@@ -30,7 +30,9 @@ func NewRouter(h *Handler, apiKeyLookup APIKeyLookupFunc, channelLookup ChannelL
 	r.Use(securityHeaders())
 	r.GET("/health", h.Health)
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-	r.GET("/update", h.ThingSpeak(channelLookup, logger))
+	tsHandler := h.ThingSpeak(channelLookup, logger, rdb)
+	r.GET("/update", tsHandler)
+	r.POST("/update", tsHandler)
 
 	v1 := r.Group("/v1")
 	v1.Use(apiKeyAuth(apiKeyLookup, logger))
@@ -40,16 +42,19 @@ func NewRouter(h *Handler, apiKeyLookup APIKeyLookupFunc, channelLookup ChannelL
 		KeyFunc:  sharedMiddleware.APIKeyKeyFunc,
 		Logger:   logger,
 	}))
-	v1.Use(sharedMiddleware.RateLimit(rdb, sharedMiddleware.RateLimitConfig{
+	// Per-channel rate limit scoped only to channel data routes to avoid applying
+	// IP-based fallback limiting to future v1 routes without a channel_id.
+	channelData := v1.Group("/channels/:channel_id")
+	channelData.Use(sharedMiddleware.RateLimit(rdb, sharedMiddleware.RateLimitConfig{
 		Requests: 10,
 		Window:   time.Second,
 		KeyFunc:  sharedMiddleware.ChannelIDKeyFunc,
 		Logger:   logger,
 	}))
 	{
-		v1.POST("/channels/:channel_id/data", h.Ingest)
-		v1.POST("/channels/:channel_id/data/bulk", h.BulkIngest)
-		v1.POST("/channels/:channel_id/replay", h.Replay)
+		channelData.POST("/data", h.Ingest)
+		channelData.POST("/data/bulk", h.BulkIngest)
+		channelData.POST("/replay", h.Replay)
 	}
 	return r
 }
