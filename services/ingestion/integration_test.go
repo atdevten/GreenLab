@@ -95,9 +95,9 @@ func newTestRouter(t *testing.T, brokers []string, rdb *redis.Client) *gin.Engin
 	t.Cleanup(func() { _ = producer.Close() })
 
 	svc := application.NewIngestService(producer, slog.Default(), 0 /* no max age in tests */)
-	handler := transporthttp.NewHandler(svc, slog.Default())
+	handler := transporthttp.NewHandler(svc, slog.Default(), nil)
 
-	return transporthttp.NewRouter(handler, stubLookup, slog.Default(), rdb)
+	return transporthttp.NewRouter(handler, stubLookup, stubChannelLookup, slog.Default(), rdb)
 }
 
 // newAuthOnlyRouter builds a router without a real Kafka producer — only the auth
@@ -109,9 +109,9 @@ func newAuthOnlyRouter(t *testing.T, rdb *redis.Client) *gin.Engine {
 
 	// noopPublisher satisfies EventPublisher but never touches Kafka.
 	svc := application.NewIngestService(noopPublisher{}, slog.Default(), 0)
-	handler := transporthttp.NewHandler(svc, slog.Default())
+	handler := transporthttp.NewHandler(svc, slog.Default(), nil)
 
-	return transporthttp.NewRouter(handler, stubLookup, slog.Default(), rdb)
+	return transporthttp.NewRouter(handler, stubLookup, stubChannelLookup, slog.Default(), rdb)
 }
 
 // stubLookup accepts only testAPIKey; everything else returns ErrDeviceNotFound.
@@ -122,10 +122,21 @@ func stubLookup(_ context.Context, key, channelID string) (domain.DeviceSchema, 
 	return domain.DeviceSchema{}, domain.ErrDeviceNotFound
 }
 
+// stubChannelLookup resolves a channel by API key (ThingSpeak-style).
+func stubChannelLookup(_ context.Context, key string) (domain.DeviceSchema, error) {
+	if key == testAPIKey {
+		return domain.DeviceSchema{DeviceID: testDeviceID, ChannelID: testChannelID}, nil
+	}
+	return domain.DeviceSchema{}, domain.ErrDeviceNotFound
+}
+
 // noopPublisher is an EventPublisher that discards all readings.
 type noopPublisher struct{}
 
 func (noopPublisher) PublishReadings(_ context.Context, _ []*domain.Reading) error { return nil }
+func (noopPublisher) PublishReplayReadings(_ context.Context, _ []*domain.Reading) error {
+	return nil
+}
 
 // readKafkaMessages reads exactly count messages from topic and unmarshals each into a map.
 // Fails the test if count messages are not received within timeout.
