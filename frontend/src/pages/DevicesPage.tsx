@@ -594,12 +594,18 @@ function DeviceCard({
   onDelete(d: Device): void
 }) {
   const [copied, setCopied] = useState(false)
+  const { toast } = useToast()
 
   function copyKey() {
     const key = device.apiKey
-    const done = () => { setCopied(true); setTimeout(() => setCopied(false), 2000) }
+    const done = () => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+      if (key) toast(`Copied: ${key.slice(0, 8)}…`, 'info')
+      else toast('No API key available', 'error')
+    }
 
-    if (!key) { done(); return }   // still show feedback even if key is empty
+    if (!key) { done(); return }
 
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(key).then(done).catch(() => {
