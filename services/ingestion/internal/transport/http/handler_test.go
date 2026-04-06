@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -498,7 +499,9 @@ func (m *mockChannelLookup) Lookup(ctx context.Context, apiKey string) (domain.D
 func buildThingSpeakRouter(h *Handler, lookup ChannelLookupFunc) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/update", h.ThingSpeak(lookup, slog.Default()))
+	tsHandler := h.ThingSpeak(lookup, slog.Default(), nil) // nil rdb disables rate limiting in tests
+	r.GET("/update", tsHandler)
+	r.POST("/update", tsHandler)
 	return r
 }
 
@@ -715,6 +718,33 @@ func TestHandler_ThingSpeak(t *testing.T) {
 		r := buildThingSpeakRouter(h, lookup)
 		// field2 value is not a number, should be skipped
 		w := doThingSpeakRequest(r, "api_key=valid-key&field1=25.0&field2=notanumber")
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.NotEqual(t, "0", w.Body.String())
+		svc.AssertExpectations(t)
+	})
+
+	t.Run("POST with form body is accepted", func(t *testing.T) {
+		svc := &mockIngestService{}
+		h := newTestHandler(svc)
+
+		lookup := func(_ context.Context, key string) (domain.DeviceSchema, error) {
+			if key == "valid-key" {
+				return schema, nil
+			}
+			return domain.DeviceSchema{}, domain.ErrDeviceNotFound
+		}
+
+		svc.On("Ingest", mock.Anything, mock.MatchedBy(func(in application.IngestInput) bool {
+			return in.ChannelID == "chan-uuid-1" && in.Fields["temperature"] == 22.5
+		})).Return(nil)
+
+		r := buildThingSpeakRouter(h, lookup)
+		body := strings.NewReader("api_key=valid-key&field1=22.5")
+		req := httptest.NewRequest(http.MethodPost, "/update", body)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.NotEqual(t, "0", w.Body.String())
