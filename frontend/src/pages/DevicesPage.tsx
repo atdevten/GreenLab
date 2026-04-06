@@ -598,14 +598,15 @@ function DeviceCard({
 
   function copyKey() {
     const key = device.apiKey
+    if (!key) {
+      toast('No API key available', 'error')
+      return
+    }
     const done = () => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-      if (key) toast(`Copied: ${key.slice(0, 8)}…`, 'info')
-      else toast('No API key available', 'error')
+      toast(`Copied: ${key.slice(0, 8)}…`, 'info')
     }
-
-    if (!key) { done(); return }
 
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(key).then(done).catch(() => {

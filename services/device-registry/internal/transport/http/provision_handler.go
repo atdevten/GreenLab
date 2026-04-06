@@ -97,7 +97,7 @@ func (h *ProvisionHandler) Provision(c *gin.Context) {
 	}
 
 	response.Created(c, &ProvisionResponse{
-		Device:  toDeviceResponse(result.Device),
+		Device:  toDeviceResponse(result.Device, true),
 		Channel: toChannelResponse(result.Channel),
 		Fields:  fieldResponses,
 	})

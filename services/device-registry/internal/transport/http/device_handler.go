@@ -80,7 +80,7 @@ func (h *DeviceHandler) CreateDevice(c *gin.Context) {
 		response.Error(c, mapDeviceError(err))
 		return
 	}
-	response.Created(c, toDeviceResponse(d))
+	response.Created(c, toDeviceResponse(d, true))
 }
 
 // GetDevice godoc
@@ -98,7 +98,7 @@ func (h *DeviceHandler) GetDevice(c *gin.Context) {
 		response.Error(c, mapDeviceError(err))
 		return
 	}
-	response.OK(c, toDeviceResponse(d))
+	response.OK(c, toDeviceResponse(d, false))
 }
 
 // ListDevices godoc
@@ -126,7 +126,7 @@ func (h *DeviceHandler) ListDevices(c *gin.Context) {
 	}
 	items := make([]*DeviceResponse, len(devices))
 	for i, d := range devices {
-		items[i] = toDeviceResponse(d)
+		items[i] = toDeviceResponse(d, false)
 	}
 	response.OKWithMeta(c, items, pagination.NewOffsetResult(items, total, page))
 }
@@ -156,7 +156,7 @@ func (h *DeviceHandler) UpdateDevice(c *gin.Context) {
 		response.Error(c, mapDeviceError(err))
 		return
 	}
-	response.OK(c, toDeviceResponse(d))
+	response.OK(c, toDeviceResponse(d, false))
 }
 
 // RotateAPIKey godoc
@@ -174,7 +174,7 @@ func (h *DeviceHandler) RotateAPIKey(c *gin.Context) {
 		response.Error(c, mapDeviceError(err))
 		return
 	}
-	response.OK(c, toDeviceResponse(d))
+	response.OK(c, toDeviceResponse(d, true))
 }
 
 // DeleteDevice godoc
@@ -218,17 +218,21 @@ func (h *DeviceHandler) ListByWorkspace(c *gin.Context) {
 	}
 	items := make([]*DeviceResponse, len(devices))
 	for i, d := range devices {
-		items[i] = toDeviceResponse(d)
+		items[i] = toDeviceResponse(d, false)
 	}
 	response.OKWithMeta(c, items, pagination.NewOffsetResult(items, total, page))
 }
 
-func toDeviceResponse(d *device.Device) *DeviceResponse {
+func toDeviceResponse(d *device.Device, showKey bool) *DeviceResponse {
+	apiKey := ""
+	if showKey {
+		apiKey = d.APIKey
+	}
 	return &DeviceResponse{
 		ID: d.ID.String(), WorkspaceID: d.WorkspaceID.String(),
 		Name: d.Name, Description: d.Description,
 		Status: string(d.Status), Metadata: d.Metadata,
-		APIKey:     d.APIKey,
+		APIKey:     apiKey,
 		LastSeenAt: d.LastSeenAt, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 	}
 }
