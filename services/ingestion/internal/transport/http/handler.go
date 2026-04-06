@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -16,6 +18,7 @@ import (
 	"github.com/greenlab/shared/pkg/middleware"
 	"github.com/greenlab/shared/pkg/response"
 	"github.com/greenlab/shared/pkg/validator"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -256,7 +259,7 @@ func (h *Handler) BulkIngest(c *gin.Context) {
 }
 
 // ThingSpeak godoc
-// @Summary      ThingSpeak-compatible telemetry write endpoint
+// @Summary      ThingSpeak-compatible telemetry write endpoint (GET and POST)
 // @Tags         ingestion
 // @Produce      plain
 // @Param        api_key  query  string  true   "Device API key"
@@ -268,11 +271,20 @@ func (h *Handler) BulkIngest(c *gin.Context) {
 // @Param        field6   query  number  false  "Field 6 value"
 // @Param        field7   query  number  false  "Field 7 value"
 // @Param        field8   query  number  false  "Field 8 value"
-// @Success      200  {string}  string  "entry_id (Unix timestamp) on success, 0 on failure"
+// @Success      200  {string}  string  "Unix timestamp (used as entry_id) on success, 0 on failure"
 // @Router       /update [get]
-func (h *Handler) ThingSpeak(lookup ChannelLookupFunc, logger *slog.Logger) gin.HandlerFunc {
+// @Router       /update [post]
+func (h *Handler) ThingSpeak(lookup ChannelLookupFunc, logger *slog.Logger, rdb *redis.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		apiKey := c.Query("api_key")
+		// getParam reads from query string first, then POST form body.
+		getParam := func(key string) string {
+			if v := c.Query(key); v != "" {
+				return v
+			}
+			return c.PostForm(key)
+		}
+
+		apiKey := getParam("api_key")
 		if apiKey == "" {
 			apiKey = c.GetHeader("X-API-Key")
 		}
@@ -292,21 +304,42 @@ func (h *Handler) ThingSpeak(lookup ChannelLookupFunc, logger *slog.Logger) gin.
 			return
 		}
 
+		// Apply per-key rate limiting after auth (100 req/min, same as /v1 routes).
+		// Returns "0" on limit exceeded — ThingSpeak clients don't handle 429.
+		if rdb != nil {
+			redisKey := "ratelimit:ts:" + apiKey
+			now := time.Now()
+			windowStart := now.Add(-time.Minute)
+			pipe := rdb.Pipeline()
+			pipe.ZRemRangeByScore(c.Request.Context(), redisKey, "0", strconv.FormatInt(windowStart.UnixNano(), 10))
+			countCmd := pipe.ZCard(c.Request.Context(), redisKey)
+			pipe.ZAdd(c.Request.Context(), redisKey, redis.Z{Score: float64(now.UnixNano()), Member: now.UnixNano()})
+			pipe.Expire(c.Request.Context(), redisKey, time.Minute)
+			if _, pipeErr := pipe.Exec(c.Request.Context()); pipeErr == nil && countCmd.Val() >= 100 {
+				c.String(http.StatusOK, "0")
+				return
+			}
+		}
+
 		// Build a position→name map from the schema fields.
 		posToName := make(map[int]string, len(schema.Fields))
 		for _, f := range schema.Fields {
 			posToName[int(f.Index)] = f.Name
 		}
 
-		// Parse field1..field8 query params and map to named fields.
+		// Parse field1..field8 from query params or POST form body, map to named fields.
+		const thingSpeakMaxFields = 8
 		fields := make(map[string]float64)
-		for i := 1; i <= 8; i++ {
-			raw := c.Query(fmt.Sprintf("field%d", i))
+		for i := 1; i <= thingSpeakMaxFields; i++ {
+			raw := getParam(fmt.Sprintf("field%d", i))
 			if raw == "" {
 				continue
 			}
 			var val float64
 			if _, err := fmt.Sscanf(raw, "%g", &val); err != nil {
+				continue
+			}
+			if math.IsInf(val, 0) || math.IsNaN(val) {
 				continue
 			}
 			name, ok := posToName[i]

@@ -122,7 +122,7 @@ func stubLookup(_ context.Context, key, channelID string) (domain.DeviceSchema, 
 	return domain.DeviceSchema{}, domain.ErrDeviceNotFound
 }
 
-// stubChannelLookup resolves a channel by API key (ThingSpeak-style).
+// stubChannelLookup resolves a channel by API key alone (ThingSpeak-style).
 func stubChannelLookup(_ context.Context, key string) (domain.DeviceSchema, error) {
 	if key == testAPIKey {
 		return domain.DeviceSchema{DeviceID: testDeviceID, ChannelID: testChannelID}, nil
