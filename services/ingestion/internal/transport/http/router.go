@@ -15,6 +15,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	swaggerFiles "github.com/swaggo/files"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 // APIKeyLookupFunc validates an API key + channelID pair and returns the device schema.
@@ -26,6 +27,7 @@ type ChannelLookupFunc func(ctx context.Context, apiKey string) (domain.DeviceSc
 func NewRouter(h *Handler, apiKeyLookup APIKeyLookupFunc, channelLookup ChannelLookupFunc, logger *slog.Logger, rdb *redis.Client) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(otelgin.Middleware("ingestion"))
 	r.Use(sharedMiddleware.RequestID())
 	r.Use(securityHeaders())
 	r.GET("/health", h.Health)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
+	"go.opentelemetry.io/otel/trace"
 	"github.com/greenlab/ingestion/internal/domain"
 )
 
@@ -56,7 +57,9 @@ type readingEvent struct {
 
 // buildMessages serializes a batch of readings into Kafka messages.
 // If replay is true, a "replay: true" header is added to each message.
-func buildMessages(readings []*domain.Reading, replay bool) ([]kafka.Message, error) {
+// If the context carries a valid OTel span, a W3C traceparent header is injected
+// so downstream consumers can continue the trace.
+func buildMessages(ctx context.Context, readings []*domain.Reading, replay bool) ([]kafka.Message, error) {
 	msgs := make([]kafka.Message, 0, len(readings))
 	for _, r := range readings {
 		evt := readingEvent{
@@ -79,9 +82,20 @@ func buildMessages(readings []*domain.Reading, replay bool) ([]kafka.Message, er
 			Key:   []byte(r.ChannelID),
 			Value: b,
 		}
+
+		var headers []kafka.Header
 		if replay {
-			msg.Headers = []kafka.Header{{Key: "replay", Value: []byte("true")}}
+			headers = append(headers, kafka.Header{Key: "replay", Value: []byte("true")})
 		}
+		if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
+			sc := span.SpanContext()
+			traceparent := fmt.Sprintf("00-%s-%s-01", sc.TraceID().String(), sc.SpanID().String())
+			headers = append(headers, kafka.Header{Key: "traceparent", Value: []byte(traceparent)})
+		}
+		if len(headers) > 0 {
+			msg.Headers = headers
+		}
+
 		msgs = append(msgs, msg)
 	}
 	return msgs, nil
@@ -89,7 +103,7 @@ func buildMessages(readings []*domain.Reading, replay bool) ([]kafka.Message, er
 
 // PublishReadings sends a batch of reading events.
 func (p *ReadingProducer) PublishReadings(ctx context.Context, readings []*domain.Reading) error {
-	msgs, err := buildMessages(readings, false)
+	msgs, err := buildMessages(ctx, readings, false)
 	if err != nil {
 		return fmt.Errorf("ReadingProducer.PublishReadings: %w", err)
 	}
@@ -104,7 +118,7 @@ func (p *ReadingProducer) PublishReadings(ctx context.Context, readings []*domai
 
 // PublishReplayReadings sends a batch of replay reading events with a "replay: true" header.
 func (p *ReadingProducer) PublishReplayReadings(ctx context.Context, readings []*domain.Reading) error {
-	msgs, err := buildMessages(readings, true)
+	msgs, err := buildMessages(ctx, readings, true)
 	if err != nil {
 		return fmt.Errorf("ReadingProducer.PublishReplayReadings: %w", err)
 	}
