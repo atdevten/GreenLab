@@ -27,8 +27,8 @@ import (
 )
 
 const (
-	testAPIKey    = "ts_testkey_integration"
-	testChannelID = "550e8400-e29b-41d4-a716-446655440000"
+	testAPIKey    = "g_testkey_integration"
+	testChannelID = "42"
 	testDeviceID  = "device-integration-001"
 	topicReadings = "raw.sensor.ingest"
 )
