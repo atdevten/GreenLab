@@ -36,6 +36,7 @@ func NewAuditService(repo EventRepository, logger *slog.Logger) *AuditService {
 type RecordInput struct {
 	TenantID     string
 	UserID       string
+	UserName     string
 	EventType    string
 	ResourceID   string
 	ResourceType string
@@ -47,7 +48,7 @@ type RecordInput struct {
 // Record appends a new audit event (append-only, never updates or deletes).
 func (s *AuditService) Record(ctx context.Context, in RecordInput) (*audit.AuditEvent, error) {
 	event := audit.NewAuditEvent(
-		in.TenantID, in.UserID, in.EventType,
+		in.TenantID, in.UserID, in.UserName, in.EventType,
 		in.ResourceID, in.ResourceType,
 		in.IPAddress, in.UserAgent, in.Payload,
 	)

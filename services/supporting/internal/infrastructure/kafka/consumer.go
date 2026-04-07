@@ -51,6 +51,7 @@ type genericEvent struct {
 type userPayload struct {
 	UserID   string `json:"user_id"`
 	TenantID string `json:"tenant_id"`
+	Name     string `json:"name"`
 	Email    string `json:"email"`
 	IP       string `json:"ip"`
 }
@@ -91,16 +92,25 @@ func (c *AuditConsumer) Start(ctx context.Context) error {
 		}
 
 		var up userPayload
-		tenantID, userID, ipAddress := "", "", ""
+		tenantID, userID, userName, ipAddress := "", "", "", ""
 		if err := json.Unmarshal(evt.Payload, &up); err == nil {
 			tenantID = up.TenantID
 			userID = up.UserID
 			ipAddress = up.IP
+			switch {
+			case up.Name != "":
+				userName = up.Name
+			case up.Email != "":
+				userName = up.Email
+			default:
+				userName = up.UserID
+			}
 		}
 
 		if _, err := c.svc.Record(ctx, application.RecordInput{
 			TenantID:     tenantID,
 			UserID:       userID,
+			UserName:     userName,
 			EventType:    evt.Type,
 			ResourceID:   string(msg.Key),
 			ResourceType: sourceToResourceType(evt.Source),

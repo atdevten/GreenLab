@@ -42,6 +42,7 @@ type AuditEventResponse struct {
 	ID           string    `json:"id"`
 	TenantID     string    `json:"tenant_id"`
 	UserID       string    `json:"user_id"`
+	UserName     string    `json:"user_name"`
 	EventType    string    `json:"event_type"`
 	Action       string    `json:"action"`        // alias for event_type — frontend-expected field
 	ResourceID   string    `json:"resource_id"`
