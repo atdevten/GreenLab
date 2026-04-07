@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/greenlab/device-registry/internal/application"
+	"github.com/greenlab/device-registry/internal/domain/channel"
 	"github.com/greenlab/device-registry/internal/domain/device"
 	"github.com/greenlab/shared/pkg/apierr"
 	"github.com/greenlab/shared/pkg/pagination"
@@ -14,7 +15,7 @@ import (
 )
 
 type deviceService interface {
-	CreateDevice(ctx context.Context, in application.CreateDeviceInput) (*device.Device, error)
+	CreateDevice(ctx context.Context, in application.CreateDeviceInput) (*device.Device, *channel.Channel, error)
 	GetDevice(ctx context.Context, id string) (*device.Device, error)
 	ListDevices(ctx context.Context, workspaceID string, limit, offset int) ([]*device.Device, int64, error)
 	UpdateDevice(ctx context.Context, id string, in application.UpdateDeviceInput) (*device.Device, error)
@@ -73,14 +74,17 @@ func (h *DeviceHandler) CreateDevice(c *gin.Context) {
 		response.ValidationError(c, err)
 		return
 	}
-	d, err := h.svc.CreateDevice(c.Request.Context(), application.CreateDeviceInput{
+	d, ch, err := h.svc.CreateDevice(c.Request.Context(), application.CreateDeviceInput{
 		WorkspaceID: req.WorkspaceID, Name: req.Name, Description: req.Description,
 	})
 	if err != nil {
 		response.Error(c, mapDeviceError(err))
 		return
 	}
-	response.Created(c, toDeviceResponse(d, true))
+	response.Created(c, gin.H{
+		"device":  toDeviceResponse(d, true),
+		"channel": toChannelResponse(ch),
+	})
 }
 
 // GetDevice godoc

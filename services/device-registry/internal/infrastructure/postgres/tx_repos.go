@@ -49,9 +49,13 @@ type txChannelRepo struct{ tx *sqlx.Tx }
 func newTxChannelRepo(tx *sqlx.Tx) *txChannelRepo { return &txChannelRepo{tx: tx} }
 
 func (r *txChannelRepo) Create(ctx context.Context, ch *channel.Channel) error {
-	_, err := r.tx.NamedExecContext(ctx, `
+	row := toChannelRow(ch)
+	err := r.tx.QueryRowContext(ctx, `
 		INSERT INTO channels (id, workspace_id, device_id, name, description, visibility, tags)
-		VALUES (:id, :workspace_id, :device_id, :name, :description, :visibility, :tags)`, toChannelRow(ch))
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING short_id`,
+		row.ID, row.WorkspaceID, row.DeviceID, row.Name, row.Description, row.Visibility, row.Tags,
+	).Scan(&ch.ShortID)
 	if err != nil {
 		return fmt.Errorf("txChannelRepo.Create: %w", err)
 	}

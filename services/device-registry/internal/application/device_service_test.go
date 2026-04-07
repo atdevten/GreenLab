@@ -10,66 +10,87 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/greenlab/device-registry/internal/domain/channel"
 	"github.com/greenlab/device-registry/internal/domain/device"
+	mockchannel "github.com/greenlab/device-registry/internal/mocks/channel"
 	mockdevice "github.com/greenlab/device-registry/internal/mocks/device"
 )
 
-func newTestDeviceService(t *testing.T) (*DeviceService, *mockdevice.MockDeviceRepository, *mockdevice.MockDeviceCacheRepository) {
+// fakeTxRunner calls fn synchronously with the given repos, simulating a transaction.
+type fakeTxRunner struct {
+	devRepo  device.DeviceRepository
+	chanRepo channel.ChannelRepository
+	txErr    error
+}
+
+func (m *fakeTxRunner) RunInTx(ctx context.Context, fn func(context.Context, TxRepos) error) error {
+	if m.txErr != nil {
+		return m.txErr
+	}
+	return fn(ctx, TxRepos{Devices: m.devRepo, Channels: m.chanRepo})
+}
+
+func newTestDeviceService(t *testing.T) (*DeviceService, *mockdevice.MockDeviceRepository, *mockchannel.MockChannelRepository, *mockdevice.MockDeviceCacheRepository) {
 	t.Helper()
 	repo := mockdevice.NewMockDeviceRepository(t)
+	chanRepo := mockchannel.NewMockChannelRepository(t)
 	cache := mockdevice.NewMockDeviceCacheRepository(t)
-	svc := NewDeviceService(repo, cache, slog.Default())
-	return svc, repo, cache
+	tx := &fakeTxRunner{devRepo: repo, chanRepo: chanRepo}
+	svc := NewDeviceService(repo, tx, cache, slog.Default())
+	return svc, repo, chanRepo, cache
 }
 
 func TestCreateDevice(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		svc, repo, cache := newTestDeviceService(t)
+		svc, repo, chanRepo, cache := newTestDeviceService(t)
 		wsID := uuid.New()
 
 		repo.On("Create", ctx, mock.AnythingOfType("*device.Device")).Return(nil)
+		chanRepo.On("Create", ctx, mock.AnythingOfType("*channel.Channel")).Return(nil)
 		cache.On("SetDevice", ctx, mock.AnythingOfType("*device.Device")).Return(nil)
 
-		d, err := svc.CreateDevice(ctx, CreateDeviceInput{
+		d, ch, err := svc.CreateDevice(ctx, CreateDeviceInput{
 			WorkspaceID: wsID.String(),
 			Name:        "My Device",
 			Description: "desc",
 		})
 		require.NoError(t, err)
 		assert.Equal(t, "My Device", d.Name)
+		assert.NotNil(t, ch)
 		repo.AssertExpectations(t)
+		chanRepo.AssertExpectations(t)
 		cache.AssertExpectations(t)
 	})
 
 	t.Run("invalid workspace_id", func(t *testing.T) {
-		svc, _, _ := newTestDeviceService(t)
-		d, err := svc.CreateDevice(ctx, CreateDeviceInput{WorkspaceID: "bad-uuid", Name: "name"})
+		svc, _, _, _ := newTestDeviceService(t)
+		d, _, err := svc.CreateDevice(ctx, CreateDeviceInput{WorkspaceID: "bad-uuid", Name: "name"})
 		assert.Error(t, err)
 		assert.Nil(t, d)
 	})
 
 	t.Run("empty name returns domain error", func(t *testing.T) {
-		svc, _, _ := newTestDeviceService(t)
-		d, err := svc.CreateDevice(ctx, CreateDeviceInput{WorkspaceID: uuid.New().String(), Name: ""})
+		svc, _, _, _ := newTestDeviceService(t)
+		d, _, err := svc.CreateDevice(ctx, CreateDeviceInput{WorkspaceID: uuid.New().String(), Name: ""})
 		assert.ErrorIs(t, err, device.ErrInvalidName)
 		assert.Nil(t, d)
 	})
 
 	t.Run("whitespace name returns domain error", func(t *testing.T) {
-		svc, _, _ := newTestDeviceService(t)
-		d, err := svc.CreateDevice(ctx, CreateDeviceInput{WorkspaceID: uuid.New().String(), Name: "   "})
+		svc, _, _, _ := newTestDeviceService(t)
+		d, _, err := svc.CreateDevice(ctx, CreateDeviceInput{WorkspaceID: uuid.New().String(), Name: "   "})
 		assert.ErrorIs(t, err, device.ErrInvalidName)
 		assert.Nil(t, d)
 	})
 
 	t.Run("repo error is propagated", func(t *testing.T) {
-		svc, repo, _ := newTestDeviceService(t)
+		svc, repo, _, _ := newTestDeviceService(t)
 		dbErr := errors.New("db error")
 		repo.On("Create", ctx, mock.AnythingOfType("*device.Device")).Return(dbErr)
 
-		d, err := svc.CreateDevice(ctx, CreateDeviceInput{WorkspaceID: uuid.New().String(), Name: "My Device"})
+		d, _, err := svc.CreateDevice(ctx, CreateDeviceInput{WorkspaceID: uuid.New().String(), Name: "My Device"})
 		assert.Error(t, err)
 		assert.Nil(t, d)
 		repo.AssertExpectations(t)
@@ -80,7 +101,7 @@ func TestGetDevice(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		svc, repo, _ := newTestDeviceService(t)
+		svc, repo, _, _ := newTestDeviceService(t)
 		id := uuid.New()
 		expected := &device.Device{ID: id, Name: "My Device"}
 		repo.On("GetByID", ctx, id).Return(expected, nil)
@@ -92,14 +113,14 @@ func TestGetDevice(t *testing.T) {
 	})
 
 	t.Run("invalid id", func(t *testing.T) {
-		svc, _, _ := newTestDeviceService(t)
+		svc, _, _, _ := newTestDeviceService(t)
 		d, err := svc.GetDevice(ctx, "not-a-uuid")
 		assert.Error(t, err)
 		assert.Nil(t, d)
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		svc, repo, _ := newTestDeviceService(t)
+		svc, repo, _, _ := newTestDeviceService(t)
 		id := uuid.New()
 		repo.On("GetByID", ctx, id).Return(nil, device.ErrDeviceNotFound)
 
@@ -114,7 +135,7 @@ func TestUpdateDevice(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		svc, repo, cache := newTestDeviceService(t)
+		svc, repo, _, cache := newTestDeviceService(t)
 		id := uuid.New()
 		existing := &device.Device{ID: id, Name: "Old Name", Status: device.DeviceStatusActive}
 		repo.On("GetByID", ctx, id).Return(existing, nil)
@@ -129,7 +150,7 @@ func TestUpdateDevice(t *testing.T) {
 	})
 
 	t.Run("whitespace name returns domain error", func(t *testing.T) {
-		svc, repo, _ := newTestDeviceService(t)
+		svc, repo, _, _ := newTestDeviceService(t)
 		id := uuid.New()
 		existing := &device.Device{ID: id, Name: "Name", Status: device.DeviceStatusActive}
 		repo.On("GetByID", ctx, id).Return(existing, nil)
@@ -141,7 +162,7 @@ func TestUpdateDevice(t *testing.T) {
 	})
 
 	t.Run("invalid status returns error", func(t *testing.T) {
-		svc, repo, _ := newTestDeviceService(t)
+		svc, repo, _, _ := newTestDeviceService(t)
 		id := uuid.New()
 		existing := &device.Device{ID: id, Name: "Name", Status: device.DeviceStatusActive}
 		repo.On("GetByID", ctx, id).Return(existing, nil)
@@ -157,7 +178,7 @@ func TestRotateAPIKey(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		svc, repo, cache := newTestDeviceService(t)
+		svc, repo, _, cache := newTestDeviceService(t)
 		id := uuid.New()
 		existing := &device.Device{ID: id, Name: "My Device", APIKey: "ts_old"}
 		repo.On("GetByID", ctx, id).Return(existing, nil)
@@ -173,7 +194,7 @@ func TestRotateAPIKey(t *testing.T) {
 	})
 
 	t.Run("IncrDeviceVersion error is logged not returned", func(t *testing.T) {
-		svc, repo, cache := newTestDeviceService(t)
+		svc, repo, _, cache := newTestDeviceService(t)
 		id := uuid.New()
 		existing := &device.Device{ID: id, Name: "My Device", APIKey: "ts_old"}
 		repo.On("GetByID", ctx, id).Return(existing, nil)
@@ -193,7 +214,7 @@ func TestDeleteDevice(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success — db deleted before cache eviction", func(t *testing.T) {
-		svc, repo, cache := newTestDeviceService(t)
+		svc, repo, _, cache := newTestDeviceService(t)
 		id := uuid.New()
 		apiKey := "ts_somekey"
 		existing := &device.Device{ID: id, APIKey: apiKey}
@@ -209,7 +230,7 @@ func TestDeleteDevice(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		svc, repo, _ := newTestDeviceService(t)
+		svc, repo, _, _ := newTestDeviceService(t)
 		id := uuid.New()
 		repo.On("GetByID", ctx, id).Return(nil, device.ErrDeviceNotFound)
 
@@ -219,7 +240,7 @@ func TestDeleteDevice(t *testing.T) {
 	})
 
 	t.Run("repo delete error — cache not touched", func(t *testing.T) {
-		svc, repo, _ := newTestDeviceService(t)
+		svc, repo, _, _ := newTestDeviceService(t)
 		id := uuid.New()
 		existing := &device.Device{ID: id, APIKey: "ts_somekey"}
 		repo.On("GetByID", ctx, id).Return(existing, nil)
@@ -235,7 +256,7 @@ func TestValidateAPIKey(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("cache hit", func(t *testing.T) {
-		svc, _, cache := newTestDeviceService(t)
+		svc, _, _, cache := newTestDeviceService(t)
 		apiKey := "ts_somekey"
 		expected := &device.Device{APIKey: apiKey}
 		cache.On("GetDeviceByAPIKey", ctx, apiKey).Return(expected, nil)
@@ -247,7 +268,7 @@ func TestValidateAPIKey(t *testing.T) {
 	})
 
 	t.Run("cache miss falls through to repo", func(t *testing.T) {
-		svc, repo, cache := newTestDeviceService(t)
+		svc, repo, _, cache := newTestDeviceService(t)
 		apiKey := "ts_somekey"
 		expected := &device.Device{APIKey: apiKey}
 		cache.On("GetDeviceByAPIKey", ctx, apiKey).Return(nil, device.ErrCacheMiss)
@@ -262,7 +283,7 @@ func TestValidateAPIKey(t *testing.T) {
 	})
 
 	t.Run("unexpected cache error falls through to repo", func(t *testing.T) {
-		svc, repo, cache := newTestDeviceService(t)
+		svc, repo, _, cache := newTestDeviceService(t)
 		apiKey := "ts_somekey"
 		expected := &device.Device{APIKey: apiKey}
 		cache.On("GetDeviceByAPIKey", ctx, apiKey).Return(nil, errors.New("redis: connection refused"))
@@ -277,7 +298,7 @@ func TestValidateAPIKey(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		svc, repo, cache := newTestDeviceService(t)
+		svc, repo, _, cache := newTestDeviceService(t)
 		apiKey := "ts_unknown"
 		cache.On("GetDeviceByAPIKey", ctx, apiKey).Return(nil, device.ErrCacheMiss)
 		repo.On("GetByAPIKey", ctx, apiKey).Return(nil, device.ErrDeviceNotFound)
