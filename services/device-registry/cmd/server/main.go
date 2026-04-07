@@ -66,7 +66,8 @@ func main() {
 	// Device dependencies
 	deviceRepo := infraPostgres.NewDeviceRepo(db)
 	deviceCache := infraRedis.NewDeviceCache(rdb)
-	deviceSvc := application.NewDeviceService(deviceRepo, deviceCache, slog.Default())
+	txRunner := infraPostgres.NewTxRunner(db)
+	deviceSvc := application.NewDeviceService(deviceRepo, txRunner, deviceCache, slog.Default())
 
 	// Channel & storage dependencies
 	channelRepo := infraPostgres.NewChannelRepo(db)
@@ -83,7 +84,6 @@ func main() {
 	fieldSvc := application.NewFieldService(fieldRepo)
 
 	// Provision dependencies (atomic device + channel + fields)
-	txRunner := infraPostgres.NewTxRunner(db)
 	provisionSvc := application.NewProvisionService(txRunner, deviceCache, slog.Default())
 
 	// Internal (machine-to-machine) dependencies

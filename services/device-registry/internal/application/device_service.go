@@ -7,18 +7,20 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
+	"github.com/greenlab/device-registry/internal/domain/channel"
 	"github.com/greenlab/device-registry/internal/domain/device"
 )
 
 // DeviceService implements device management use-cases.
 type DeviceService struct {
 	repo   device.DeviceRepository
+	tx     TxRunner
 	cache  device.DeviceCacheRepository
 	logger *slog.Logger
 }
 
-func NewDeviceService(repo device.DeviceRepository, cache device.DeviceCacheRepository, logger *slog.Logger) *DeviceService {
-	return &DeviceService{repo: repo, cache: cache, logger: logger}
+func NewDeviceService(repo device.DeviceRepository, tx TxRunner, cache device.DeviceCacheRepository, logger *slog.Logger) *DeviceService {
+	return &DeviceService{repo: repo, tx: tx, cache: cache, logger: logger}
 }
 
 type CreateDeviceInput struct {
@@ -27,22 +29,35 @@ type CreateDeviceInput struct {
 	Description string
 }
 
-func (s *DeviceService) CreateDevice(ctx context.Context, in CreateDeviceInput) (*device.Device, error) {
+func (s *DeviceService) CreateDevice(ctx context.Context, in CreateDeviceInput) (*device.Device, *channel.Channel, error) {
 	wsID, err := uuid.Parse(in.WorkspaceID)
 	if err != nil {
-		return nil, fmt.Errorf("CreateDevice.ParseWorkspaceID: %w", err)
+		return nil, nil, fmt.Errorf("CreateDevice.ParseWorkspaceID: %w", err)
 	}
 	d, err := device.NewDevice(wsID, in.Name, in.Description)
 	if err != nil {
-		return nil, fmt.Errorf("CreateDevice.NewDevice: %w", err)
+		return nil, nil, fmt.Errorf("CreateDevice.NewDevice: %w", err)
 	}
-	if err := s.repo.Create(ctx, d); err != nil {
-		return nil, fmt.Errorf("CreateDevice.repo.Create: %w", err)
+	ch, err := channel.NewChannel(wsID, "Channel 1", "", channel.ChannelVisibilityPrivate)
+	if err != nil {
+		return nil, nil, fmt.Errorf("CreateDevice.NewChannel: %w", err)
+	}
+	ch.SetDevice(d.ID)
+	if err := s.tx.RunInTx(ctx, func(ctx context.Context, repos TxRepos) error {
+		if err := repos.Devices.Create(ctx, d); err != nil {
+			return fmt.Errorf("tx.Devices.Create: %w", err)
+		}
+		if err := repos.Channels.Create(ctx, ch); err != nil {
+			return fmt.Errorf("tx.Channels.Create: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return nil, nil, fmt.Errorf("CreateDevice.RunInTx: %w", err)
 	}
 	if err := s.cache.SetDevice(ctx, d); err != nil {
 		s.logger.Error("failed to cache device", "device_id", d.ID, "error", err)
 	}
-	return d, nil
+	return d, ch, nil
 }
 
 func (s *DeviceService) GetDevice(ctx context.Context, id string) (*device.Device, error) {

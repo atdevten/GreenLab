@@ -1,4 +1,4 @@
-.PHONY: all build test test-integration coverage lint tidy up down deploy generate-keys mock migrate-all migrate-up migrate-down swagger
+.PHONY: all build test test-integration coverage lint tidy up down deploy generate-keys mock migrate-all migrate-up migrate-down migrate-down-all migrate-down-service swagger
 
 SERVICES := iam device-registry ingestion normalization query-realtime alert-notification supporting
 

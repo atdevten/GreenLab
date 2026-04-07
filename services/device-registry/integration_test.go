@@ -251,7 +251,7 @@ func TestGetDevice_ReturnsDeviceByID(t *testing.T) {
 	channelRepo := postgres.NewChannelRepo(db)
 
 	logger := slog.Default()
-	deviceSvc := application.NewDeviceService(deviceRepo, &noopDeviceCache{}, logger)
+	deviceSvc := application.NewDeviceService(deviceRepo, postgres.NewTxRunner(db), &noopDeviceCache{}, logger)
 	channelSvc := application.NewChannelService(channelRepo, &noopRetentionManager{}, slog.Default())
 
 	deviceHandler := transporthttp.NewDeviceHandler(deviceSvc)
@@ -279,7 +279,7 @@ func TestGetChannel_ReturnsChannelByID(t *testing.T) {
 	channelRepo := postgres.NewChannelRepo(db)
 
 	logger := slog.Default()
-	deviceSvc := application.NewDeviceService(deviceRepo, &noopDeviceCache{}, logger)
+	deviceSvc := application.NewDeviceService(deviceRepo, postgres.NewTxRunner(db), &noopDeviceCache{}, logger)
 	channelSvc := application.NewChannelService(channelRepo, &noopRetentionManager{}, slog.Default())
 
 	deviceHandler := transporthttp.NewDeviceHandler(deviceSvc)
@@ -328,7 +328,7 @@ func TestRotateAPIKey_UpdatesKeyAndIncreasesVersion(t *testing.T) {
 	assert.Equal(t, devID, cached.ID)
 
 	// Wire the full HTTP stack.
-	deviceSvc := application.NewDeviceService(deviceRepo, deviceCache, logger)
+	deviceSvc := application.NewDeviceService(deviceRepo, postgres.NewTxRunner(db), deviceCache, logger)
 	channelSvc := application.NewChannelService(channelRepo, &noopRetentionManager{}, slog.Default())
 	deviceHandler := transporthttp.NewDeviceHandler(deviceSvc)
 	channelHandler := transporthttp.NewChannelHandler(channelSvc)
