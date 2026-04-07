@@ -15,9 +15,10 @@ type Reading struct {
 }
 
 // ValidateChannelID returns ErrInvalidChannelID if id is not a positive integer string.
+// Uses int32 bounds to match PostgreSQL SERIAL (INT4, max 2 147 483 647).
 func ValidateChannelID(id string) error {
-	n, err := strconv.ParseUint(id, 10, 32)
-	if err != nil || n == 0 {
+	n, err := strconv.ParseInt(id, 10, 32)
+	if err != nil || n <= 0 {
 		return ErrInvalidChannelID
 	}
 	return nil

@@ -39,6 +39,14 @@ func TestValidateChannelID(t *testing.T) {
 	t.Run("integer with leading spaces returns ErrInvalidChannelID", func(t *testing.T) {
 		assert.ErrorIs(t, ValidateChannelID(" 42"), ErrInvalidChannelID)
 	})
+
+	t.Run("max int32 is valid", func(t *testing.T) {
+		assert.NoError(t, ValidateChannelID("2147483647"))
+	})
+
+	t.Run("value exceeding int32 max returns ErrInvalidChannelID", func(t *testing.T) {
+		assert.ErrorIs(t, ValidateChannelID("2147483648"), ErrInvalidChannelID)
+	})
 }
 
 func TestValidateReplayTimestamp(t *testing.T) {

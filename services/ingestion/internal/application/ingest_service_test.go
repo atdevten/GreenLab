@@ -279,7 +279,7 @@ func TestIngestBatch(t *testing.T) {
 
 		inputs := []IngestInput{
 			{ChannelID: "42", Fields: map[string]float64{"a": 1}},
-			{ChannelID: "42", Fields: map[string]float64{"b": 2}},
+			{ChannelID: "43", Fields: map[string]float64{"b": 2}},
 		}
 
 		p.On("PublishReadings", ctx, mock.AnythingOfType("[]*domain.Reading")).Return(nil)
