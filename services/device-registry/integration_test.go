@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS devices (
 
 CREATE TABLE IF NOT EXISTS channels (
   id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  short_id     SERIAL UNIQUE,
   workspace_id UUID NOT NULL,
   device_id    UUID REFERENCES devices(id) ON DELETE SET NULL,
   name         TEXT NOT NULL,
