@@ -192,17 +192,19 @@ func insertChannel(t *testing.T, db *sqlx.DB, workspaceID uuid.UUID, name string
 	return id
 }
 
-// insertChannelForDevice inserts a channel associated with a device and returns its UUID.
-func insertChannelForDevice(t *testing.T, db *sqlx.DB, workspaceID, deviceID uuid.UUID, name string) uuid.UUID {
+// insertChannelForDevice inserts a channel associated with a device and returns its UUID and short_id string.
+func insertChannelForDevice(t *testing.T, db *sqlx.DB, workspaceID, deviceID uuid.UUID, name string) (uuid.UUID, string) {
 	t.Helper()
 	id := uuid.New()
-	_, err := db.ExecContext(context.Background(), `
+	var shortID int
+	err := db.QueryRowContext(context.Background(), `
 		INSERT INTO channels (id, workspace_id, device_id, name, visibility, tags)
-		VALUES ($1, $2, $3, $4, 'private', '[]')`,
+		VALUES ($1, $2, $3, $4, 'private', '[]')
+		RETURNING short_id`,
 		id, workspaceID, deviceID, name,
-	)
+	).Scan(&shortID)
 	require.NoError(t, err, "insert channel %s for device", name)
-	return id
+	return id, fmt.Sprintf("%d", shortID)
 }
 
 // insertField inserts a field row for the given channel and returns its UUID.
@@ -369,14 +371,14 @@ func TestInternalRepo_ResolveChannelByAPIKey(t *testing.T) {
 
 	t.Run("active device with fields returns correct schema", func(t *testing.T) {
 		devID := insertDevice(t, db, wsID, "dev-resolve-1", "key-resolve-1")
-		chanID := insertChannelForDevice(t, db, wsID, devID, "chan-resolve-1")
+		chanID, chanShortID := insertChannelForDevice(t, db, wsID, devID, "chan-resolve-1")
 		insertField(t, db, chanID, "temperature", "float", 1)
 		insertField(t, db, chanID, "humidity", "float", 2)
 
 		result, err := repo.ResolveChannelByAPIKey(ctx, "key-resolve-1")
 		require.NoError(t, err)
 		assert.Equal(t, devID.String(), result.DeviceID)
-		assert.Equal(t, chanID.String(), result.ChannelID)
+		assert.Equal(t, chanShortID, result.ChannelID)
 		require.Len(t, result.Fields, 2)
 		assert.Equal(t, "temperature", result.Fields[0].Name)
 		assert.Equal(t, "humidity", result.Fields[1].Name)
@@ -384,22 +386,21 @@ func TestInternalRepo_ResolveChannelByAPIKey(t *testing.T) {
 
 	t.Run("multi-channel device returns only first channel's fields", func(t *testing.T) {
 		devID := insertDevice(t, db, wsID, "dev-multichan", "key-multichan")
-		chan1ID := insertChannelForDevice(t, db, wsID, devID, "chan-first")
-		chan2ID := insertChannelForDevice(t, db, wsID, devID, "chan-second")
+		chan1ID, chan1ShortID := insertChannelForDevice(t, db, wsID, devID, "chan-first")
+		chan2ID, _ := insertChannelForDevice(t, db, wsID, devID, "chan-second")
 		insertField(t, db, chan1ID, "voltage", "float", 1)
 		insertField(t, db, chan2ID, "pressure", "float", 1) // same position, different channel
 
 		result, err := repo.ResolveChannelByAPIKey(ctx, "key-multichan")
 		require.NoError(t, err)
-		assert.Equal(t, chan1ID.String(), result.ChannelID, "should resolve to oldest channel")
+		assert.Equal(t, chan1ShortID, result.ChannelID, "should resolve to oldest channel")
 		require.Len(t, result.Fields, 1, "must not include fields from other channels")
 		assert.Equal(t, "voltage", result.Fields[0].Name)
 	})
 
 	t.Run("device with no fields returns empty fields slice", func(t *testing.T) {
 		devID := insertDevice(t, db, wsID, "dev-nofields", "key-nofields")
-		chanID := insertChannelForDevice(t, db, wsID, devID, "chan-nofields")
-		_ = chanID
+		_, _ = insertChannelForDevice(t, db, wsID, devID, "chan-nofields")
 
 		result, err := repo.ResolveChannelByAPIKey(ctx, "key-nofields")
 		require.NoError(t, err)
@@ -442,7 +443,8 @@ func TestResolveChannel_HTTPEndpoint(t *testing.T) {
 
 	t.Run("valid api_key returns 200 with device and channel", func(t *testing.T) {
 		devID := insertDevice(t, db, wsID, "dev-http-resolve", "key-http-resolve")
-		chanID := insertChannelForDevice(t, db, wsID, devID, "chan-http-resolve")
+		chanID, chanShortID := insertChannelForDevice(t, db, wsID, devID, "chan-http-resolve")
+		_ = chanID
 		insertField(t, db, chanID, "co2", "float", 1)
 
 		req := httptest.NewRequest(http.MethodGet, "/internal/resolve-channel?api_key=key-http-resolve", nil)
@@ -451,7 +453,7 @@ func TestResolveChannel_HTTPEndpoint(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), devID.String())
-		assert.Contains(t, w.Body.String(), chanID.String())
+		assert.Contains(t, w.Body.String(), chanShortID)
 		assert.Contains(t, w.Body.String(), "co2")
 	})
 
