@@ -25,7 +25,7 @@ type Config struct {
 	BaseURL string
 	// APIKey is the device write API key.
 	APIKey string
-	// ChannelID is the UUID of the channel to write to.
+	// ChannelID is the integer string ID of the channel to write to (e.g. "42").
 	ChannelID string
 	// BatchSize is the maximum number of readings per Send call (default 10).
 	BatchSize int

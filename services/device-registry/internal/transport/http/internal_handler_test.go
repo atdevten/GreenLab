@@ -258,7 +258,7 @@ func TestInternalHandler_ResolveChannel(t *testing.T) {
 	t.Run("valid api_key returns device_id, channel_id and fields", func(t *testing.T) {
 		svc := &mockInternalService{}
 		result := application.ResolveChannelResult{
-			ChannelID: "chan-uuid-1",
+			ChannelID: "42",
 			ValidateAPIKeyResult: application.ValidateAPIKeyResult{
 				DeviceID: "dev-uuid-1",
 				Fields: []application.FieldEntry{
@@ -279,7 +279,7 @@ func TestInternalHandler_ResolveChannel(t *testing.T) {
 
 		data := resp["data"].(map[string]any)
 		assert.Equal(t, "dev-uuid-1", data["device_id"])
-		assert.Equal(t, "chan-uuid-1", data["channel_id"])
+		assert.Equal(t, "42", data["channel_id"])
 		assert.Equal(t, float64(2), data["schema_version"])
 
 		fields := data["fields"].([]any)
@@ -319,7 +319,7 @@ func TestInternalHandler_ResolveChannel(t *testing.T) {
 	t.Run("device with no fields returns empty fields slice", func(t *testing.T) {
 		svc := &mockInternalService{}
 		result := application.ResolveChannelResult{
-			ChannelID: "chan-uuid-2",
+			ChannelID: "43",
 			ValidateAPIKeyResult: application.ValidateAPIKeyResult{
 				DeviceID:      "dev-uuid-2",
 				Fields:        []application.FieldEntry{},
@@ -336,7 +336,7 @@ func TestInternalHandler_ResolveChannel(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 
 		data := resp["data"].(map[string]any)
-		assert.Equal(t, "chan-uuid-2", data["channel_id"])
+		assert.Equal(t, "43", data["channel_id"])
 		fields := data["fields"].([]any)
 		assert.Empty(t, fields)
 

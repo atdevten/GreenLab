@@ -14,6 +14,7 @@ import (
 
 type channelRow struct {
 	ID            uuid.UUID                 `db:"id"`
+	ShortID       int                       `db:"short_id"`
 	WorkspaceID   uuid.UUID                 `db:"workspace_id"`
 	DeviceID      *uuid.UUID                `db:"device_id"`
 	Name          string                    `db:"name"`
@@ -29,6 +30,7 @@ type channelRow struct {
 func (r *channelRow) toDomain() *channel.Channel {
 	return &channel.Channel{
 		ID:            r.ID,
+		ShortID:       r.ShortID,
 		WorkspaceID:   r.WorkspaceID,
 		DeviceID:      r.DeviceID,
 		Name:          r.Name,
@@ -45,6 +47,7 @@ func (r *channelRow) toDomain() *channel.Channel {
 func toChannelRow(ch *channel.Channel) *channelRow {
 	return &channelRow{
 		ID:            ch.ID,
+		ShortID:       ch.ShortID,
 		WorkspaceID:   ch.WorkspaceID,
 		DeviceID:      ch.DeviceID,
 		Name:          ch.Name,
@@ -63,9 +66,13 @@ type ChannelRepo struct{ db *sqlx.DB }
 func NewChannelRepo(db *sqlx.DB) *ChannelRepo { return &ChannelRepo{db: db} }
 
 func (r *ChannelRepo) Create(ctx context.Context, ch *channel.Channel) error {
-	_, err := r.db.NamedExecContext(ctx, `
+	row := toChannelRow(ch)
+	err := r.db.QueryRowContext(ctx, `
 		INSERT INTO channels (id, workspace_id, device_id, name, description, visibility, tags)
-		VALUES (:id, :workspace_id, :device_id, :name, :description, :visibility, :tags)`, toChannelRow(ch))
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING short_id`,
+		row.ID, row.WorkspaceID, row.DeviceID, row.Name, row.Description, row.Visibility, row.Tags,
+	).Scan(&ch.ShortID)
 	if err != nil {
 		return fmt.Errorf("ChannelRepo.Create: %w", err)
 	}
@@ -75,7 +82,7 @@ func (r *ChannelRepo) Create(ctx context.Context, ch *channel.Channel) error {
 func (r *ChannelRepo) GetByID(ctx context.Context, id uuid.UUID) (*channel.Channel, error) {
 	var row channelRow
 	err := r.db.GetContext(ctx, &row,
-		`SELECT id, workspace_id, device_id, name, description, visibility, tags, created_at, updated_at, deleted_at FROM channels WHERE id=$1 AND deleted_at IS NULL`, id)
+		`SELECT id, short_id, workspace_id, device_id, name, description, visibility, tags, created_at, updated_at, deleted_at FROM channels WHERE id=$1 AND deleted_at IS NULL`, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("ChannelRepo.GetByID: %w", channel.ErrChannelNotFound)
 	}
@@ -93,7 +100,7 @@ type channelListRow struct {
 func (r *ChannelRepo) ListByWorkspace(ctx context.Context, workspaceID uuid.UUID, limit, offset int) ([]*channel.Channel, int64, error) {
 	var rows []channelListRow
 	err := r.db.SelectContext(ctx, &rows, `
-		SELECT id, workspace_id, device_id, name, description, visibility, tags, created_at, updated_at, deleted_at,
+		SELECT id, short_id, workspace_id, device_id, name, description, visibility, tags, created_at, updated_at, deleted_at,
 		       COUNT(*) OVER() AS total_count
 		FROM channels WHERE workspace_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
 		workspaceID, limit, offset)
@@ -114,7 +121,7 @@ func (r *ChannelRepo) ListByWorkspace(ctx context.Context, workspaceID uuid.UUID
 func (r *ChannelRepo) ListByDevice(ctx context.Context, deviceID uuid.UUID, limit, offset int) ([]*channel.Channel, int64, error) {
 	var rows []channelListRow
 	err := r.db.SelectContext(ctx, &rows, `
-		SELECT id, workspace_id, device_id, name, description, visibility, tags, created_at, updated_at, deleted_at,
+		SELECT id, short_id, workspace_id, device_id, name, description, visibility, tags, created_at, updated_at, deleted_at,
 		       COUNT(*) OVER() AS total_count
 		FROM channels WHERE device_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
 		deviceID, limit, offset)
