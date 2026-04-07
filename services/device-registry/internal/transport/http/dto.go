@@ -83,6 +83,7 @@ type UpdateChannelRequest struct {
 
 type ChannelResponse struct {
 	ID            string    `json:"id"`
+	ShortID       int       `json:"short_id"`
 	WorkspaceID   string    `json:"workspace_id"`
 	DeviceID      *string   `json:"device_id,omitempty"`
 	Name          string    `json:"name"`

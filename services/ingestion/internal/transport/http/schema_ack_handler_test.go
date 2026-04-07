@@ -38,7 +38,7 @@ func buildRouterWithACK(h *Handler, schema domain.DeviceSchema) *gin.Engine {
 func TestHandler_IngestCompact_RecordsACK_OnSuccess(t *testing.T) {
 	schema := domain.DeviceSchema{
 		DeviceID:      "dev-uuid-1",
-		ChannelID:     "chan-uuid-1",
+		ChannelID:     "42",
 		Fields:        []domain.FieldEntry{{Index: 1, Name: "temperature", Type: "float"}},
 		SchemaVersion: 3,
 	}
@@ -51,10 +51,10 @@ func TestHandler_IngestCompact_RecordsACK_OnSuccess(t *testing.T) {
 	r := buildRouterWithACK(h, schema)
 
 	svc.On("IngestBatch", mock.Anything, mock.Anything).Return(nil)
-	ackStore.On("RecordACK", mock.Anything, "chan-uuid-1", "dev-uuid-1", uint32(3)).Return(nil)
+	ackStore.On("RecordACK", mock.Anything, "42", "dev-uuid-1", uint32(3)).Return(nil)
 
 	body := []byte(`{"f":[42.5],"sv":3}`)
-	w := doRequest(r, "POST", "/v1/channels/chan-uuid-1/data", body, ctOJSON)
+	w := doRequest(r, "POST", "/v1/channels/42/data", body, ctOJSON)
 
 	require.Equal(t, http.StatusCreated, w.Code)
 	svc.AssertExpectations(t)
@@ -64,7 +64,7 @@ func TestHandler_IngestCompact_RecordsACK_OnSuccess(t *testing.T) {
 func TestHandler_IngestCompact_ACKStoreError_DoesNotFailRequest(t *testing.T) {
 	schema := domain.DeviceSchema{
 		DeviceID:      "dev-uuid-1",
-		ChannelID:     "chan-uuid-1",
+		ChannelID:     "42",
 		Fields:        []domain.FieldEntry{{Index: 1, Name: "temperature", Type: "float"}},
 		SchemaVersion: 2,
 	}
@@ -82,7 +82,7 @@ func TestHandler_IngestCompact_ACKStoreError_DoesNotFailRequest(t *testing.T) {
 		Return(errors.New("redis connection refused"))
 
 	body := []byte(`{"f":[42.5],"sv":2}`)
-	w := doRequest(r, "POST", "/v1/channels/chan-uuid-1/data", body, ctOJSON)
+	w := doRequest(r, "POST", "/v1/channels/42/data", body, ctOJSON)
 
 	// Request must still return 201 despite ACK store failure.
 	assert.Equal(t, http.StatusCreated, w.Code)
@@ -93,7 +93,7 @@ func TestHandler_IngestCompact_ACKStoreError_DoesNotFailRequest(t *testing.T) {
 func TestHandler_IngestCompact_NilACKStore_DoesNotPanic(t *testing.T) {
 	schema := domain.DeviceSchema{
 		DeviceID:      "dev-uuid-1",
-		ChannelID:     "chan-uuid-1",
+		ChannelID:     "42",
 		Fields:        []domain.FieldEntry{{Index: 1, Name: "temperature", Type: "float"}},
 		SchemaVersion: 1,
 	}
@@ -106,7 +106,7 @@ func TestHandler_IngestCompact_NilACKStore_DoesNotPanic(t *testing.T) {
 	svc.On("IngestBatch", mock.Anything, mock.Anything).Return(nil)
 
 	body := []byte(`{"f":[42.5],"sv":1}`)
-	w := doRequest(r, "POST", "/v1/channels/chan-uuid-1/data", body, ctOJSON)
+	w := doRequest(r, "POST", "/v1/channels/42/data", body, ctOJSON)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 	svc.AssertExpectations(t)
@@ -115,7 +115,7 @@ func TestHandler_IngestCompact_NilACKStore_DoesNotPanic(t *testing.T) {
 func TestHandler_IngestCompact_ACKNotCalled_OnServiceError(t *testing.T) {
 	schema := domain.DeviceSchema{
 		DeviceID:      "dev-uuid-1",
-		ChannelID:     "chan-uuid-1",
+		ChannelID:     "42",
 		Fields:        []domain.FieldEntry{{Index: 1, Name: "temperature", Type: "float"}},
 		SchemaVersion: 1,
 	}
@@ -131,7 +131,7 @@ func TestHandler_IngestCompact_ACKNotCalled_OnServiceError(t *testing.T) {
 	svc.On("IngestBatch", mock.Anything, mock.Anything).Return(errors.New("kafka unavailable"))
 
 	body := []byte(`{"f":[42.5],"sv":1}`)
-	w := doRequest(r, "POST", "/v1/channels/chan-uuid-1/data", body, ctOJSON)
+	w := doRequest(r, "POST", "/v1/channels/42/data", body, ctOJSON)
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 	ackStore.AssertNotCalled(t, "RecordACK")
@@ -141,7 +141,7 @@ func TestHandler_IngestCompact_ACKNotCalled_OnServiceError(t *testing.T) {
 func TestHandler_IngestCompact_ACKUsesSchemaVersion(t *testing.T) {
 	schema := domain.DeviceSchema{
 		DeviceID:      "dev-uuid-99",
-		ChannelID:     "chan-uuid-99",
+		ChannelID:     "99",
 		Fields:        []domain.FieldEntry{{Index: 1, Name: "temp", Type: "float"}},
 		SchemaVersion: 7,
 	}
@@ -155,10 +155,10 @@ func TestHandler_IngestCompact_ACKUsesSchemaVersion(t *testing.T) {
 
 	svc.On("IngestBatch", mock.Anything, mock.Anything).Return(nil)
 	// Verify schema version 7 is passed to RecordACK, not the payload's "sv" field.
-	ackStore.On("RecordACK", mock.Anything, "chan-uuid-99", "dev-uuid-99", uint32(7)).Return(nil)
+	ackStore.On("RecordACK", mock.Anything, "99", "dev-uuid-99", uint32(7)).Return(nil)
 
 	body := []byte(`{"f":[1.0],"sv":7}`)
-	w := doRequest(r, "POST", "/v1/channels/chan-uuid-99/data", body, ctOJSON)
+	w := doRequest(r, "POST", "/v1/channels/99/data", body, ctOJSON)
 
 	require.Equal(t, http.StatusCreated, w.Code)
 

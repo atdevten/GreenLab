@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -74,7 +73,7 @@ func doRequest(r *gin.Engine, method, path string, body []byte, contentType stri
 
 var testSchema = domain.DeviceSchema{
 	DeviceID:      "dev-uuid-1",
-	ChannelID:     uuid.New().String(),
+	ChannelID:     "42",
 	Fields:        []domain.FieldEntry{{Index: 1, Name: "temperature", Type: "float"}},
 	SchemaVersion: 1,
 }
@@ -82,7 +81,7 @@ var testSchema = domain.DeviceSchema{
 // --- tests ---
 
 func TestHandler_Ingest_JSON(t *testing.T) {
-	channelID := uuid.New().String()
+	channelID := "42"
 
 	t.Run("application/json — existing behavior unchanged", func(t *testing.T) {
 		svc := &mockIngestService{}
@@ -125,7 +124,7 @@ func TestHandler_Ingest_JSON(t *testing.T) {
 }
 
 func TestHandler_Ingest_OJSON(t *testing.T) {
-	channelID := uuid.New().String()
+	channelID := "42"
 	schema := domain.DeviceSchema{
 		DeviceID:      "dev-uuid-1",
 		ChannelID:     channelID,
@@ -164,7 +163,7 @@ func TestHandler_Ingest_OJSON(t *testing.T) {
 }
 
 func TestHandler_Ingest_MsgPack(t *testing.T) {
-	channelID := uuid.New().String()
+	channelID := "42"
 	schema := domain.DeviceSchema{
 		DeviceID:      "dev-uuid-1",
 		ChannelID:     channelID,
@@ -193,7 +192,7 @@ func TestHandler_Ingest_MsgPack(t *testing.T) {
 
 func TestHandler_Ingest_Binary(t *testing.T) {
 	authDeviceID := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
-	channelID := uuid.New().String()
+	channelID := "42"
 	schema := domain.DeviceSchema{
 		DeviceID:      authDeviceID,
 		ChannelID:     channelID,
@@ -219,7 +218,7 @@ func TestHandler_Ingest_Binary(t *testing.T) {
 }
 
 func TestHandler_Ingest_SchemaMismatch(t *testing.T) {
-	channelID := uuid.New().String()
+	channelID := "42"
 	schema := domain.DeviceSchema{
 		DeviceID:      "dev-uuid-1",
 		ChannelID:     channelID,
@@ -291,7 +290,7 @@ func TestHandler_Ingest_SchemaMismatch(t *testing.T) {
 }
 
 func TestHandler_Ingest_ContentTypeDispatch(t *testing.T) {
-	channelID := uuid.New().String()
+	channelID := "42"
 
 	t.Run("unknown Content-Type returns 415", func(t *testing.T) {
 		svc := &mockIngestService{}
@@ -315,7 +314,7 @@ func TestHandler_Ingest_ContentTypeDispatch(t *testing.T) {
 }
 
 func TestHandler_BulkIngest_JSON(t *testing.T) {
-	channelID := uuid.New().String()
+	channelID := "42"
 
 	t.Run("valid bulk ingest request", func(t *testing.T) {
 		svc := &mockIngestService{}
@@ -339,7 +338,7 @@ func TestHandler_BulkIngest_JSON(t *testing.T) {
 }
 
 func TestHandler_ErrorToHTTPResponse(t *testing.T) {
-	channelID := uuid.New().String()
+	channelID := "42"
 
 	t.Run("ErrSchemaMismatch sentinel returns 409", func(t *testing.T) {
 		svc := &mockIngestService{}
@@ -424,7 +423,7 @@ func parseIngestResponse(t *testing.T, body []byte) IngestResponse {
 }
 
 func TestIngestResponse_IncludesChannelIDAndRequestID(t *testing.T) {
-	channelID := uuid.New().String()
+	channelID := "42"
 
 	t.Run("single JSON ingest — channel_id and request_id present", func(t *testing.T) {
 		svc := &mockIngestService{}
@@ -520,7 +519,7 @@ func doThingSpeakRequest(r *gin.Engine, query string) *httptest.ResponseRecorder
 func TestHandler_ThingSpeak(t *testing.T) {
 	schema := domain.DeviceSchema{
 		DeviceID:  "dev-uuid-1",
-		ChannelID: "chan-uuid-1",
+		ChannelID: "42",
 		Fields: []domain.FieldEntry{
 			{Index: 1, Name: "temperature", Type: "float"},
 			{Index: 2, Name: "humidity", Type: "float"},
@@ -540,7 +539,7 @@ func TestHandler_ThingSpeak(t *testing.T) {
 		}
 
 		svc.On("Ingest", mock.Anything, mock.MatchedBy(func(in application.IngestInput) bool {
-			return in.ChannelID == "chan-uuid-1" &&
+			return in.ChannelID == "42" &&
 				in.DeviceID == "dev-uuid-1" &&
 				in.Fields["temperature"] == 22.5 &&
 				in.Fields["humidity"] == 60.0
@@ -741,7 +740,7 @@ func TestHandler_ThingSpeak(t *testing.T) {
 		}
 
 		svc.On("Ingest", mock.Anything, mock.MatchedBy(func(in application.IngestInput) bool {
-			return in.ChannelID == "chan-uuid-1" && in.Fields["temperature"] == 22.5
+			return in.ChannelID == "42" && in.Fields["temperature"] == 22.5
 		})).Return(nil)
 
 		r := buildThingSpeakRouter(h, lookup)

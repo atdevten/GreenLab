@@ -1,9 +1,8 @@
 package domain
 
 import (
+	"strconv"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // Reading is a single telemetry data point.
@@ -15,9 +14,10 @@ type Reading struct {
 	Timestamp time.Time
 }
 
-// ValidateChannelID returns ErrInvalidChannelID if id is not a valid UUID.
+// ValidateChannelID returns ErrInvalidChannelID if id is not a positive integer string.
 func ValidateChannelID(id string) error {
-	if _, err := uuid.Parse(id); err != nil {
+	n, err := strconv.ParseUint(id, 10, 32)
+	if err != nil || n == 0 {
 		return ErrInvalidChannelID
 	}
 	return nil

@@ -27,7 +27,7 @@ class Client:
     :param base_url: Base URL of the ingestion service,
         e.g. ``"http://localhost:8003"``.
     :param api_key: Device write API key.
-    :param channel_id: UUID of the channel to write to.
+    :param channel_id: Integer string ID of the channel to write to (e.g. '42').
     :param batch_size: Maximum number of readings per :meth:`send` call.
         Defaults to 10.
     :param config_file: Path for local config persistence.

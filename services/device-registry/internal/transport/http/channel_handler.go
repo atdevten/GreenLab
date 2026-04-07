@@ -190,11 +190,15 @@ func (h *ChannelHandler) DeleteChannel(c *gin.Context) {
 
 func toChannelResponse(ch *channel.Channel) *ChannelResponse {
 	r := &ChannelResponse{
-		ID: ch.ID.String(), WorkspaceID: ch.WorkspaceID.String(),
-		Name: ch.Name, Description: ch.Description,
+		ID:            ch.ID.String(),
+		ShortID:       ch.ShortID,
+		WorkspaceID:   ch.WorkspaceID.String(),
+		Name:          ch.Name,
+		Description:   ch.Description,
 		Visibility:    string(ch.Visibility),
 		RetentionDays: ch.RetentionDays,
-		CreatedAt:     ch.CreatedAt, UpdatedAt: ch.UpdatedAt,
+		CreatedAt:     ch.CreatedAt,
+		UpdatedAt:     ch.UpdatedAt,
 	}
 	if ch.DeviceID != nil {
 		s := ch.DeviceID.String()

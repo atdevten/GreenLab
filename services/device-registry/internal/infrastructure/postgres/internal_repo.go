@@ -24,11 +24,12 @@ type validateAPIKeyRow struct {
 }
 
 type resolveChannelRow struct {
-	DeviceID  string         `db:"device_id"`
-	ChannelID string         `db:"channel_id"`
-	FieldName sql.NullString `db:"name"`
-	FieldType sql.NullString `db:"field_type"`
-	Position  sql.NullInt32  `db:"position"`
+	DeviceID        string         `db:"device_id"`
+	ChannelID       string         `db:"channel_id"`
+	ChannelShortID  int            `db:"channel_short_id"`
+	FieldName       sql.NullString `db:"name"`
+	FieldType       sql.NullString `db:"field_type"`
+	Position        sql.NullInt32  `db:"position"`
 }
 
 // ResolveChannelByAPIKey looks up the first channel belonging to the device identified by
@@ -37,7 +38,7 @@ type resolveChannelRow struct {
 func (r *InternalRepo) ResolveChannelByAPIKey(ctx context.Context, apiKey string) (application.ResolveChannelResult, error) {
 	var rows []resolveChannelRow
 	err := r.db.SelectContext(ctx, &rows, `
-		SELECT d.id as device_id, c.id as channel_id, f.name, f.field_type, f.position
+		SELECT d.id as device_id, c.id as channel_id, c.short_id as channel_short_id, f.name, f.field_type, f.position
 		FROM devices d
 		JOIN channels c ON c.device_id = d.id
 		LEFT JOIN fields f ON f.channel_id = c.id
@@ -54,6 +55,7 @@ func (r *InternalRepo) ResolveChannelByAPIKey(ctx context.Context, apiKey string
 
 	deviceID := rows[0].DeviceID
 	channelID := rows[0].ChannelID
+	channelShortID := fmt.Sprintf("%d", rows[0].ChannelShortID)
 
 	var fields []application.FieldEntry
 	for _, row := range rows {
@@ -80,7 +82,7 @@ func (r *InternalRepo) ResolveChannelByAPIKey(ctx context.Context, apiKey string
 	// in deserializeCompact, so returning 0 here disables the check rather than
 	// incorrectly claiming version 1.
 	return application.ResolveChannelResult{
-		ChannelID: channelID,
+		ChannelID: channelShortID,
 		ValidateAPIKeyResult: application.ValidateAPIKeyResult{
 			DeviceID:      deviceID,
 			Fields:        fields,
@@ -89,7 +91,8 @@ func (r *InternalRepo) ResolveChannelByAPIKey(ctx context.Context, apiKey string
 	}, nil
 }
 
-// ValidateAPIKey checks api_key + channel_id and returns the schema for that channel.
+// ValidateAPIKey checks api_key + channel short_id and returns the schema for that channel.
+// channelID is the integer short_id as a string (e.g. "42").
 // Returns device.ErrDeviceNotFound when no active device matches.
 func (r *InternalRepo) ValidateAPIKey(ctx context.Context, apiKey, channelID string) (application.ValidateAPIKeyResult, error) {
 	var rows []validateAPIKeyRow
@@ -98,7 +101,7 @@ func (r *InternalRepo) ValidateAPIKey(ctx context.Context, apiKey, channelID str
 		FROM devices d
 		JOIN channels c ON c.device_id = d.id
 		JOIN fields f ON f.channel_id = c.id
-		WHERE d.api_key = $1 AND d.status = 'active' AND d.deleted_at IS NULL AND c.id = $2
+		WHERE d.api_key = $1 AND d.status = 'active' AND d.deleted_at IS NULL AND c.short_id = $2
 		ORDER BY f.position`,
 		apiKey, channelID)
 	if err != nil {
@@ -112,7 +115,7 @@ func (r *InternalRepo) ValidateAPIKey(ctx context.Context, apiKey, channelID str
 		err = r.db.QueryRowContext(ctx, `
 			SELECT d.id FROM devices d
 			JOIN channels c ON c.device_id = d.id
-			WHERE d.api_key = $1 AND d.status = 'active' AND d.deleted_at IS NULL AND c.id = $2`,
+			WHERE d.api_key = $1 AND d.status = 'active' AND d.deleted_at IS NULL AND c.short_id = $2`,
 			apiKey, channelID).Scan(&deviceID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return application.ValidateAPIKeyResult{}, fmt.Errorf("InternalRepo.ValidateAPIKey: %w", device.ErrDeviceNotFound)

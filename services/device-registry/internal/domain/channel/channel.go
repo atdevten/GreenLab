@@ -24,6 +24,7 @@ const (
 // Channel aggregates fields for IoT data collection.
 type Channel struct {
 	ID            uuid.UUID
+	ShortID       int
 	WorkspaceID   uuid.UUID
 	DeviceID      *uuid.UUID
 	Name          string
