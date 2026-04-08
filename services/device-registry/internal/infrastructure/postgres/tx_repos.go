@@ -71,8 +71,14 @@ func (r *txChannelRepo) ListByWorkspace(_ context.Context, _ uuid.UUID, _, _ int
 func (r *txChannelRepo) ListByDevice(_ context.Context, _ uuid.UUID, _, _ int) ([]*channel.Channel, int64, error) {
 	panic("txChannelRepo.ListByDevice not implemented for transactional use")
 }
-func (r *txChannelRepo) Update(_ context.Context, _ *channel.Channel) error {
-	panic("txChannelRepo.Update not implemented for transactional use")
+func (r *txChannelRepo) Update(ctx context.Context, ch *channel.Channel) error {
+	_, err := r.tx.ExecContext(ctx,
+		`UPDATE channels SET device_id=$1, updated_at=NOW() WHERE id=$2`,
+		ch.DeviceID, ch.ID)
+	if err != nil {
+		return fmt.Errorf("txChannelRepo.Update: %w", err)
+	}
+	return nil
 }
 func (r *txChannelRepo) Delete(_ context.Context, _ uuid.UUID) error {
 	panic("txChannelRepo.Delete not implemented for transactional use")

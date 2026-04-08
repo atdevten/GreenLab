@@ -84,7 +84,7 @@ func main() {
 	fieldSvc := application.NewFieldService(fieldRepo)
 
 	// Provision dependencies (atomic device + channel + fields)
-	provisionSvc := application.NewProvisionService(txRunner, deviceCache, slog.Default())
+	provisionSvc := application.NewProvisionService(txRunner, channelRepo, deviceCache, slog.Default())
 
 	// Internal (machine-to-machine) dependencies
 	internalRepo := infraPostgres.NewInternalRepo(db)

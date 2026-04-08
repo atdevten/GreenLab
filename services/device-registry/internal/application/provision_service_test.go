@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -56,8 +57,12 @@ type mockChannelRepo struct{ mock.Mock }
 func (r *mockChannelRepo) Create(ctx context.Context, ch *channel.Channel) error {
 	return r.Called(ctx, ch).Error(0)
 }
-func (r *mockChannelRepo) GetByID(_ context.Context, _ uuid.UUID) (*channel.Channel, error) {
-	panic("not expected")
+func (r *mockChannelRepo) GetByID(ctx context.Context, id uuid.UUID) (*channel.Channel, error) {
+	args := r.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*channel.Channel), args.Error(1)
 }
 func (r *mockChannelRepo) ListByWorkspace(_ context.Context, _ uuid.UUID, _, _ int) ([]*channel.Channel, int64, error) {
 	panic("not expected")
@@ -65,8 +70,21 @@ func (r *mockChannelRepo) ListByWorkspace(_ context.Context, _ uuid.UUID, _, _ i
 func (r *mockChannelRepo) ListByDevice(_ context.Context, _ uuid.UUID, _, _ int) ([]*channel.Channel, int64, error) {
 	panic("not expected")
 }
-func (r *mockChannelRepo) Update(_ context.Context, _ *channel.Channel) error { panic("not expected") }
-func (r *mockChannelRepo) Delete(_ context.Context, _ uuid.UUID) error        { panic("not expected") }
+func (r *mockChannelRepo) Update(ctx context.Context, ch *channel.Channel) error {
+	return r.Called(ctx, ch).Error(0)
+}
+func (r *mockChannelRepo) Delete(_ context.Context, _ uuid.UUID) error { panic("not expected") }
+
+// mockChannelLookup implements only channelLookup (read-only subset).
+type mockChannelLookup struct{ mock.Mock }
+
+func (m *mockChannelLookup) GetByID(ctx context.Context, id uuid.UUID) (*channel.Channel, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*channel.Channel), args.Error(1)
+}
 
 type mockFieldRepo struct{ mock.Mock }
 
@@ -104,7 +122,12 @@ func validProvisionInput() ProvisionInput {
 
 // newProvisionSvc is a thin constructor for tests.
 func newProvisionSvc(tx *mockTxRunner, cache *mockdevice.MockDeviceCacheRepository) *ProvisionService {
-	return NewProvisionService(tx, cache, slog.Default())
+	return NewProvisionService(tx, &mockChannelLookup{}, cache, slog.Default())
+}
+
+// newProvisionSvcWithLookup constructs a ProvisionService with a custom channelLookup.
+func newProvisionSvcWithLookup(tx *mockTxRunner, lookup *mockChannelLookup, cache *mockdevice.MockDeviceCacheRepository) *ProvisionService {
+	return NewProvisionService(tx, lookup, cache, slog.Default())
 }
 
 // --- tests ---
@@ -272,4 +295,151 @@ func TestProvision_CacheErrorDoesNotFailProvision(t *testing.T) {
 	assert.NotNil(t, result)
 
 	txRunner.AssertExpectations(t)
+}
+
+// --- existing-channel path ---
+
+func validProvisionInputExisting(chID uuid.UUID) ProvisionInput {
+	in := validProvisionInput()
+	in.ExistingChannelID = chID.String()
+	in.Channel = ProvisionChannelInput{} // not used in this path
+	return in
+}
+
+func makeExistingChannel(wsID uuid.UUID) *channel.Channel {
+	now := time.Now().UTC()
+	return &channel.Channel{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		Name:        "Existing Channel",
+		Visibility:  channel.ChannelVisibilityPrivate,
+		Tags:        []byte("[]"),
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+}
+
+func TestProvision_ExistingChannel_HappyPath(t *testing.T) {
+	ctx := context.Background()
+	txRunner := &mockTxRunner{}
+	lookup := &mockChannelLookup{}
+	cache := mockdevice.NewMockDeviceCacheRepository(t)
+	svc := newProvisionSvcWithLookup(txRunner, lookup, cache)
+
+	wsID := uuid.New()
+	existingCh := makeExistingChannel(wsID)
+
+	devRepo := &mockDeviceRepo{}
+	chRepo := &mockChannelRepo{}
+	fRepo := &mockFieldRepo{}
+
+	in := validProvisionInputExisting(existingCh.ID)
+	// Parse workspace from input to satisfy UUID match.
+	in.Device.WorkspaceID = wsID.String()
+
+	lookup.On("GetByID", ctx, existingCh.ID).Return(existingCh, nil)
+	devRepo.On("Create", ctx, mock.AnythingOfType("*device.Device")).Return(nil)
+	chRepo.On("Update", ctx, existingCh).Return(nil)
+	fRepo.On("Create", ctx, mock.AnythingOfType("*field.Field")).Return(nil)
+
+	txRunner.On("RunInTx", ctx, mock.Anything).
+		Run(func(args mock.Arguments) {
+			fn := args.Get(1).(func(context.Context, TxRepos) error)
+			err := fn(ctx, TxRepos{Devices: devRepo, Channels: chRepo, Fields: fRepo})
+			require.NoError(t, err)
+		}).
+		Return(nil)
+
+	cache.On("SetDevice", ctx, mock.AnythingOfType("*device.Device")).Return(nil)
+
+	result, err := svc.Provision(ctx, in)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, existingCh.ID, result.Channel.ID)
+	assert.NotNil(t, result.Channel.DeviceID)
+	assert.Equal(t, result.Device.ID, *result.Channel.DeviceID)
+	assert.Len(t, result.Fields, 1)
+	assert.Equal(t, existingCh.ID, result.Fields[0].ChannelID)
+
+	txRunner.AssertExpectations(t)
+	lookup.AssertExpectations(t)
+	devRepo.AssertExpectations(t)
+	chRepo.AssertExpectations(t)
+	fRepo.AssertExpectations(t)
+}
+
+func TestProvision_ExistingChannel_NotFound(t *testing.T) {
+	ctx := context.Background()
+	txRunner := &mockTxRunner{}
+	lookup := &mockChannelLookup{}
+	cache := mockdevice.NewMockDeviceCacheRepository(t)
+	svc := newProvisionSvcWithLookup(txRunner, lookup, cache)
+
+	chID := uuid.New()
+	in := validProvisionInputExisting(chID)
+
+	lookup.On("GetByID", ctx, chID).Return(nil, channel.ErrChannelNotFound)
+
+	result, err := svc.Provision(ctx, in)
+	assert.ErrorIs(t, err, channel.ErrChannelNotFound)
+	assert.Nil(t, result)
+
+	txRunner.AssertNotCalled(t, "RunInTx")
+	lookup.AssertExpectations(t)
+}
+
+func TestProvision_ExistingChannel_InvalidChannelID(t *testing.T) {
+	ctx := context.Background()
+	txRunner := &mockTxRunner{}
+	lookup := &mockChannelLookup{}
+	cache := mockdevice.NewMockDeviceCacheRepository(t)
+	svc := newProvisionSvcWithLookup(txRunner, lookup, cache)
+
+	in := validProvisionInput()
+	in.ExistingChannelID = "not-a-uuid"
+
+	result, err := svc.Provision(ctx, in)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+
+	txRunner.AssertNotCalled(t, "RunInTx")
+	lookup.AssertNotCalled(t, "GetByID")
+}
+
+func TestProvision_ExistingChannel_RollbackOnChannelUpdateFailure(t *testing.T) {
+	ctx := context.Background()
+	txRunner := &mockTxRunner{}
+	lookup := &mockChannelLookup{}
+	cache := mockdevice.NewMockDeviceCacheRepository(t)
+	svc := newProvisionSvcWithLookup(txRunner, lookup, cache)
+
+	wsID := uuid.New()
+	existingCh := makeExistingChannel(wsID)
+	in := validProvisionInputExisting(existingCh.ID)
+	in.Device.WorkspaceID = wsID.String()
+
+	updateErr := errors.New("db: channel update failed")
+
+	lookup.On("GetByID", ctx, existingCh.ID).Return(existingCh, nil)
+
+	devRepo := &mockDeviceRepo{}
+	chRepo := &mockChannelRepo{}
+	fRepo := &mockFieldRepo{}
+
+	devRepo.On("Create", ctx, mock.AnythingOfType("*device.Device")).Return(nil)
+	chRepo.On("Update", ctx, existingCh).Return(updateErr)
+
+	txRunner.On("RunInTx", ctx, mock.Anything).
+		Return(func(ctx context.Context, fn func(context.Context, TxRepos) error) error {
+			return fn(ctx, TxRepos{Devices: devRepo, Channels: chRepo, Fields: fRepo})
+		})
+
+	result, err := svc.Provision(ctx, in)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+
+	txRunner.AssertExpectations(t)
+	lookup.AssertExpectations(t)
+	devRepo.AssertExpectations(t)
+	chRepo.AssertExpectations(t)
 }
