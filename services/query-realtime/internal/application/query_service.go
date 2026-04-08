@@ -95,7 +95,11 @@ func (s *QueryService) Query(ctx context.Context, req query.QueryRequest) (*quer
 }
 
 // QueryLatest returns the most recent reading for a channel field.
+// Unlike Query, fieldName is required — there is no "all fields" semantic for a latest-value lookup.
 func (s *QueryService) QueryLatest(ctx context.Context, channelID, fieldName string) (*query.LatestReading, error) {
+	if fieldName == "" {
+		return nil, query.ErrInvalidFieldName
+	}
 	if err := query.ValidateQueryRequest(&query.QueryRequest{ChannelID: channelID, FieldName: fieldName}); err != nil {
 		return nil, err
 	}
