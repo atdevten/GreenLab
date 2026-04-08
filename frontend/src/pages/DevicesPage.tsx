@@ -36,6 +36,9 @@ interface Device {
   channelName: string
   visibility: 'private' | 'public'
   fields: Field[]
+  lat?: number
+  lng?: number
+  locationLabel?: string
 }
 
 const statusColor: Record<string, 'green' | 'yellow' | 'red' | 'muted'> = {
@@ -772,6 +775,9 @@ function apiDeviceToLocal(d: ApiDevice): Device {
     channelName: '',
     visibility: 'private',
     fields: [],
+    lat: d.lat,
+    lng: d.lng,
+    locationLabel: d.location_address,
   }
 }
 
@@ -827,17 +833,14 @@ export function DevicesPage() {
         description: nd.description,
         tags: nd.tags ? nd.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
         icon: nd.icon,
+        lat: nd.lat ? (v => Number.isFinite(v) ? v : undefined)(parseFloat(nd.lat)) : undefined,
+        lng: nd.lng ? (v => Number.isFinite(v) ? v : undefined)(parseFloat(nd.lng)) : undefined,
+        location_address: nd.locationLabel || undefined,
+        channel_name: nd.channelName,
+        channel_visibility: nd.visibility,
       })
-      const deviceId = devRes.data.id
-      const apiKey = devRes.data.api_key ?? nd.apiKey
-
-      const chRes = await channelsApi.create({
-        workspace_id: nd.workspace || activeWsId,
-        device_id: deviceId,
-        name: nd.channelName,
-        visibility: nd.visibility,
-      })
-      const channelId = chRes.data.id
+      const channelId = devRes.data.channel.id
+      const apiKey = devRes.data.device.api_key ?? nd.apiKey
 
       await Promise.all(
         nd.fields.map((f, i) =>
@@ -845,7 +848,7 @@ export function DevicesPage() {
         )
       )
 
-      setDevices(prev => [apiDeviceToLocal(devRes.data), ...prev])
+      setDevices(prev => [apiDeviceToLocal(devRes.data.device), ...prev])
       toast(`Device "${nd.name}" registered`)
       return { channelId, apiKey }
     } catch {

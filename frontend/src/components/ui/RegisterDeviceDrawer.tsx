@@ -19,6 +19,9 @@ export interface NewDevice {
   workspace: string
   description: string
   tags: string
+  lat: string
+  lng: string
+  locationLabel: string
   channelName: string
   channelId: string
   visibility: 'private' | 'public'
@@ -185,6 +188,7 @@ function Stepper({ step }: { step: number }) {
 function Step1({
   name, setName, typeIdx, setTypeIdx,
   workspace, setWorkspace, workspaceOptions, description, setDescription, tags, setTags,
+  lat, setLat, lng, setLng, locationLabel, setLocationLabel,
 }: {
   name: string; setName(v: string): void
   typeIdx: number; setTypeIdx(i: number): void
@@ -192,6 +196,9 @@ function Step1({
   workspaceOptions: WorkspaceOption[]
   description: string; setDescription(v: string): void
   tags: string; setTags(v: string): void
+  lat: string; setLat(v: string): void
+  lng: string; setLng(v: string): void
+  locationLabel: string; setLocationLabel(v: string): void
 }) {
   return (
     <div>
@@ -254,12 +261,44 @@ function Step1({
       </div>
 
       {/* Tags */}
-      <div style={{ marginBottom: 4 }}>
+      <div style={{ marginBottom: 16 }}>
         <label style={label}>Tags</label>
         <input value={tags} onChange={e => setTags(e.target.value)} placeholder="agriculture, zone-a, outdoor  (comma-separated)" style={inp} />
         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 5 }}>
           Tags help you filter and group devices on the dashboard.
         </div>
+      </div>
+
+      {/* Location */}
+      <div style={{ marginBottom: 4 }}>
+        <label style={label}>Location <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--muted)' }}>(optional)</span></label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Latitude</div>
+            <input
+              value={lat} onChange={e => setLat(e.target.value)}
+              placeholder="e.g. 10.7769"
+              type="number"
+              step="any"
+              style={inp}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Longitude</div>
+            <input
+              value={lng} onChange={e => setLng(e.target.value)}
+              placeholder="e.g. 106.7009"
+              type="number"
+              step="any"
+              style={inp}
+            />
+          </div>
+        </div>
+        <input
+          value={locationLabel} onChange={e => setLocationLabel(e.target.value)}
+          placeholder="Address or location name (e.g. Greenhouse A, Building 3)"
+          style={inp}
+        />
       </div>
     </div>
   )
@@ -820,11 +859,14 @@ export function RegisterDeviceDrawer({ open, onClose, onRegister, workspaces: wo
   const [step, setStep] = useState(1)
 
   // Step 1 state
-  const [name,        setName]        = useState('')
-  const [typeIdx,     setTypeIdx]     = useState(0)
-  const [workspace,   setWorkspace]   = useState(workspaceProp[0]?.id ?? '')
-  const [description, setDescription] = useState('')
-  const [tags,        setTags]        = useState('')
+  const [name,          setName]          = useState('')
+  const [typeIdx,       setTypeIdx]       = useState(0)
+  const [workspace,     setWorkspace]     = useState(workspaceProp[0]?.id ?? '')
+  const [description,   setDescription]   = useState('')
+  const [tags,          setTags]          = useState('')
+  const [lat,           setLat]           = useState('')
+  const [lng,           setLng]           = useState('')
+  const [locationLabel, setLocationLabel] = useState('')
 
   // Step 2 state
   const [channelName, setChannelName] = useState('')
@@ -857,17 +899,20 @@ export function RegisterDeviceDrawer({ open, onClose, onRegister, workspaces: wo
     if (step === 2) {
       if (!step2Valid) return
       const device: NewDevice = {
-        icon:        DEVICE_TYPES[typeIdx].icon,
-        name:        name.trim(),
-        id:          genId(),
+        icon:          DEVICE_TYPES[typeIdx].icon,
+        name:          name.trim(),
+        id:            genId(),
         workspace,
         description,
         tags,
-        channelName: channelName.trim(),
-        channelId:   '',
+        lat,
+        lng,
+        locationLabel,
+        channelName:   channelName.trim(),
+        channelId:     '',
         visibility,
         fields,
-        apiKey:      genApiKey(),
+        apiKey:        genApiKey(),
       }
       setSubmitting(true)
       try {
@@ -891,6 +936,7 @@ export function RegisterDeviceDrawer({ open, onClose, onRegister, workspaces: wo
     setTimeout(() => {
       setStep(1); setName(''); setTypeIdx(0)
       setWorkspace(workspaceProp[0]?.id ?? ''); setDescription(''); setTags('')
+      setLat(''); setLng(''); setLocationLabel('')
       setChannelName(''); setVisibility('private')
       setFields(DEVICE_TYPES[0].defaultFields)
       setSubmitting(false)
@@ -950,6 +996,9 @@ export function RegisterDeviceDrawer({ open, onClose, onRegister, workspaces: wo
               workspaceOptions={workspaceProp}
               description={description} setDescription={setDescription}
               tags={tags} setTags={setTags}
+              lat={lat} setLat={setLat}
+              lng={lng} setLng={setLng}
+              locationLabel={locationLabel} setLocationLabel={setLocationLabel}
             />
           )}
           {step === 2 && (
