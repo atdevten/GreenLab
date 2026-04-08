@@ -40,9 +40,14 @@ type ProvisionResponse struct {
 
 // Device DTOs
 type CreateDeviceRequest struct {
-	WorkspaceID string `json:"workspace_id" validate:"required"`
-	Name        string `json:"name"         validate:"required"`
-	Description string `json:"description"`
+	WorkspaceID       string   `json:"workspace_id"       validate:"required"`
+	Name              string   `json:"name"               validate:"required"`
+	Description       string   `json:"description"`
+	Lat               *float64 `json:"lat"               validate:"omitempty,min=-90,max=90"`
+	Lng               *float64 `json:"lng"               validate:"omitempty,min=-180,max=180"`
+	LocationAddress   string   `json:"location_address"`
+	ChannelName       string   `json:"channel_name"`
+	ChannelVisibility string   `json:"channel_visibility" validate:"omitempty,oneof=public private"`
 }
 
 type UpdateDeviceRequest struct {
@@ -52,16 +57,19 @@ type UpdateDeviceRequest struct {
 }
 
 type DeviceResponse struct {
-	ID          string          `json:"id"`
-	WorkspaceID string          `json:"workspace_id"`
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	APIKey      string          `json:"api_key,omitempty"`
-	Status      string          `json:"status"`
-	Metadata    json.RawMessage `json:"metadata,omitempty" swaggertype:"object"`
-	LastSeenAt  *time.Time      `json:"last_seen_at"`
-	CreatedAt   time.Time       `json:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at"`
+	ID              string          `json:"id"`
+	WorkspaceID     string          `json:"workspace_id"`
+	Name            string          `json:"name"`
+	Description     string          `json:"description"`
+	APIKey          string          `json:"api_key,omitempty"`
+	Status          string          `json:"status"`
+	Metadata        json.RawMessage `json:"metadata,omitempty" swaggertype:"object"`
+	Lat             *float64        `json:"lat,omitempty"`
+	Lng             *float64        `json:"lng,omitempty"`
+	LocationAddress string          `json:"location_address,omitempty"`
+	LastSeenAt      *time.Time      `json:"last_seen_at"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 // Channel DTOs

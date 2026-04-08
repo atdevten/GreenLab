@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/gin-gonic/gin"
@@ -75,7 +76,14 @@ func (h *DeviceHandler) CreateDevice(c *gin.Context) {
 		return
 	}
 	d, ch, err := h.svc.CreateDevice(c.Request.Context(), application.CreateDeviceInput{
-		WorkspaceID: req.WorkspaceID, Name: req.Name, Description: req.Description,
+		WorkspaceID:      req.WorkspaceID,
+		Name:             req.Name,
+		Description:      req.Description,
+		Lat:              req.Lat,
+		Lng:              req.Lng,
+		LocationAddress:  req.LocationAddress,
+		ChannelName:      req.ChannelName,
+		ChannelVisibility: req.ChannelVisibility,
 	})
 	if err != nil {
 		response.Error(c, mapDeviceError(err))
@@ -232,11 +240,20 @@ func toDeviceResponse(d *device.Device, showKey bool) *DeviceResponse {
 	if showKey {
 		apiKey = d.APIKey
 	}
-	return &DeviceResponse{
+	resp := &DeviceResponse{
 		ID: d.ID.String(), WorkspaceID: d.WorkspaceID.String(),
 		Name: d.Name, Description: d.Description,
 		Status: string(d.Status), Metadata: d.Metadata,
 		APIKey:     apiKey,
 		LastSeenAt: d.LastSeenAt, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 	}
+	if len(d.Metadata) > 0 {
+		var meta application.LocationMetadata
+		if err := json.Unmarshal(d.Metadata, &meta); err == nil {
+			resp.Lat = meta.Lat
+			resp.Lng = meta.Lng
+			resp.LocationAddress = meta.Address
+		}
+	}
+	return resp
 }
