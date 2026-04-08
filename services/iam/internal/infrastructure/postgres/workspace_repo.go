@@ -19,6 +19,7 @@ type workspaceRow struct {
 	Name        string    `db:"name"`
 	Slug        string    `db:"slug"`
 	Description string    `db:"description"`
+	MemberCount int       `db:"member_count"`
 	CreatedAt   time.Time `db:"created_at"`
 	UpdatedAt   time.Time `db:"updated_at"`
 }
@@ -42,6 +43,7 @@ func (r workspaceRow) toWorkspace() *tenant.Workspace {
 		Name:        r.Name,
 		Slug:        r.Slug,
 		Description: r.Description,
+		MemberCount: r.MemberCount,
 		CreatedAt:   r.CreatedAt,
 		UpdatedAt:   r.UpdatedAt,
 	}
@@ -68,8 +70,9 @@ func (r *WorkspaceRepo) Create(ctx context.Context, ws *tenant.Workspace) error 
 func (r *WorkspaceRepo) GetByID(ctx context.Context, id uuid.UUID) (*tenant.Workspace, error) {
 	var row workspaceRow
 	err := r.db.GetContext(ctx, &row,
-		`SELECT id, org_id, name, slug, description, created_at, updated_at
-		 FROM workspaces WHERE id=$1`, id)
+		`SELECT w.id, w.org_id, w.name, w.slug, w.description, w.created_at, w.updated_at,
+		        (SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count
+		 FROM workspaces w WHERE w.id=$1`, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("WorkspaceRepo.GetByID: %w", tenant.ErrWorkspaceNotFound)
 	}
@@ -82,8 +85,9 @@ func (r *WorkspaceRepo) GetByID(ctx context.Context, id uuid.UUID) (*tenant.Work
 func (r *WorkspaceRepo) ListByOrg(ctx context.Context, orgID uuid.UUID) ([]*tenant.Workspace, error) {
 	var rows []workspaceRow
 	err := r.db.SelectContext(ctx, &rows,
-		`SELECT id, org_id, name, slug, description, created_at, updated_at
-		 FROM workspaces WHERE org_id=$1 ORDER BY created_at`, orgID)
+		`SELECT w.id, w.org_id, w.name, w.slug, w.description, w.created_at, w.updated_at,
+		        (SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count
+		 FROM workspaces w WHERE w.org_id=$1 ORDER BY w.created_at`, orgID)
 	if err != nil {
 		return nil, err
 	}

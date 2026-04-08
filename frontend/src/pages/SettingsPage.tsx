@@ -3,9 +3,10 @@ import { Card } from '../components/ui/Card'
 import { Btn } from '../components/ui/Button'
 import { useToast } from '../contexts/ToastContext'
 import { settingsApi } from '../api/settings'
-import type { Org, ApiKey } from '../types'
+import type { Org, ApiKey, WorkspaceApiKey } from '../types'
+import { workspacesApi } from '../api/workspaces'
 
-const navItems = ['General', 'Notifications', 'API Keys', 'Security', 'Billing']
+const navItems = ['General', 'Notifications', 'API Keys', 'Workspace Keys', 'Security', 'Billing']
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
   return (
@@ -73,6 +74,16 @@ export function SettingsPage() {
   const [showNewKeyForm, setShowNewKeyForm] = useState(false)
   const [newKeyValue, setNewKeyValue] = useState<string | null>(null)
 
+  // Workspace API Keys tab state
+  const [wsApiKeys, setWsApiKeys] = useState<WorkspaceApiKey[]>([])
+  const [wsKeysLoading, setWsKeysLoading] = useState(false)
+  const [newWsKeyName, setNewWsKeyName] = useState('')
+  const [newWsKeyScope, setNewWsKeyScope] = useState<'read' | 'write'>('read')
+  const [showNewWsKeyForm, setShowNewWsKeyForm] = useState(false)
+  const [creatingWsKey, setCreatingWsKey] = useState(false)
+  const [newWsKeyValue, setNewWsKeyValue] = useState<string | null>(null)
+  const wsId = localStorage.getItem('workspace_id') ?? ''
+
   useEffect(() => {
     if (active === 'General' && orgId) {
       setOrgLoading(true)
@@ -96,6 +107,16 @@ export function SettingsPage() {
         .finally(() => setKeysLoading(false))
     }
   }, [active])
+
+  useEffect(() => {
+    if (active === 'Workspace Keys' && wsId) {
+      setWsKeysLoading(true)
+      workspacesApi.listApiKeys(wsId)
+        .then(r => setWsApiKeys(r.data))
+        .catch(() => {})
+        .finally(() => setWsKeysLoading(false))
+    }
+  }, [active, wsId])
 
   function handleSaveOrg() {
     if (!orgId) return
@@ -132,6 +153,32 @@ export function SettingsPage() {
         toast('API key revoked')
       })
       .catch(() => toast('Failed to revoke API key', 'error'))
+  }
+
+  function handleCreateWsKey() {
+    if (!newWsKeyName.trim() || !wsId) return
+    setCreatingWsKey(true)
+    workspacesApi.createApiKey(wsId, { name: newWsKeyName.trim(), scope: newWsKeyScope })
+      .then(r => {
+        const { key, ...keyData } = r.data
+        setWsApiKeys(prev => [keyData, ...prev])
+        setNewWsKeyValue(key)
+        setNewWsKeyName('')
+        setShowNewWsKeyForm(false)
+        toast('Workspace API key created')
+      })
+      .catch(() => toast('Failed to create workspace API key', 'error'))
+      .finally(() => setCreatingWsKey(false))
+  }
+
+  function handleRevokeWsKey(keyId: string) {
+    if (!wsId) return
+    workspacesApi.revokeApiKey(wsId, keyId)
+      .then(() => {
+        setWsApiKeys(prev => prev.filter(k => k.id !== keyId))
+        toast('Workspace API key revoked')
+      })
+      .catch(() => toast('Failed to revoke workspace API key', 'error'))
   }
 
   return (
@@ -321,6 +368,89 @@ export function SettingsPage() {
                     <Btn variant="danger" size="sm" onClick={() => handleRevokeKey(k.id)}>Revoke</Btn>
                   </div>
                 ))
+              )}
+            </Card>
+          )}
+
+          {active === 'Workspace Keys' && (
+            <Card>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Workspace API Keys</div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>Scoped keys for integrations and read-only access</div>
+                  </div>
+                  <Btn variant="primary" size="sm" onClick={() => { setShowNewWsKeyForm(v => !v); setNewWsKeyValue(null) }}>+ New Key</Btn>
+                </div>
+              </div>
+
+              {showNewWsKeyForm && (
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16, padding: 12, background: 'var(--surface2)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+                  <input
+                    value={newWsKeyName}
+                    onChange={e => setNewWsKeyName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleCreateWsKey()}
+                    placeholder="Key name (e.g. Integration Token)"
+                    style={{ flex: 1, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '7px 12px', color: 'var(--text)', fontSize: 13, outline: 'none' }}
+                    autoFocus
+                  />
+                  <select
+                    value={newWsKeyScope}
+                    onChange={e => setNewWsKeyScope(e.target.value as 'read' | 'write')}
+                    style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '7px 10px', color: 'var(--text)', fontSize: 13, outline: 'none', cursor: 'pointer' }}
+                  >
+                    <option value="read">read</option>
+                    <option value="write">write</option>
+                  </select>
+                  <Btn variant="primary" size="sm" onClick={handleCreateWsKey} disabled={creatingWsKey || !newWsKeyName.trim()}>
+                    {creatingWsKey ? 'Creating…' : 'Create'}
+                  </Btn>
+                  <Btn variant="ghost" size="sm" onClick={() => { setShowNewWsKeyForm(false); setNewWsKeyName('') }}>Cancel</Btn>
+                </div>
+              )}
+
+              {newWsKeyValue && (
+                <div style={{ marginBottom: 16, padding: 12, background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.3)', borderRadius: 'var(--radius)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--green)', fontWeight: 600, marginBottom: 6 }}>Copy it now — not shown again</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <code style={{ flex: 1, fontFamily: 'monospace', fontSize: 12, color: 'var(--text)', wordBreak: 'break-all' }}>{newWsKeyValue}</code>
+                    <Btn variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(newWsKeyValue!); toast('Copied!') }}>Copy</Btn>
+                    <Btn variant="ghost" size="sm" onClick={() => setNewWsKeyValue(null)}>✕</Btn>
+                  </div>
+                </div>
+              )}
+
+              {wsKeysLoading ? (
+                <div style={{ color: 'var(--muted)', fontSize: 13, padding: '12px 0' }}>Loading…</div>
+              ) : wsApiKeys.length === 0 ? (
+                <div style={{ color: 'var(--muted)', fontSize: 13, padding: '12px 0' }}>No workspace API keys yet.</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ color: 'var(--muted)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                      <th style={{ textAlign: 'left', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>Name</th>
+                      <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>Scope</th>
+                      <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>Prefix</th>
+                      <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>Last Used</th>
+                      <th style={{ textAlign: 'right', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {wsApiKeys.map(k => (
+                      <tr key={k.id}>
+                        <td style={{ padding: '12px 0', borderBottom: '1px solid var(--border2)', fontWeight: 600 }}>{k.name}</td>
+                        <td style={{ padding: '12px 8px', borderBottom: '1px solid var(--border2)' }}>
+                          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, fontWeight: 600, background: k.scope === 'write' ? 'rgba(234,179,8,.15)' : 'rgba(34,197,94,.12)', color: k.scope === 'write' ? 'var(--yellow)' : 'var(--green)' }}>{k.scope}</span>
+                        </td>
+                        <td style={{ padding: '12px 8px', borderBottom: '1px solid var(--border2)', fontFamily: 'monospace', color: 'var(--cyan)', fontSize: 12 }}>{k.key_prefix}…</td>
+                        <td style={{ padding: '12px 8px', borderBottom: '1px solid var(--border2)', color: 'var(--muted)', fontSize: 12 }}>{k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : '—'}</td>
+                        <td style={{ padding: '12px 0', borderBottom: '1px solid var(--border2)', textAlign: 'right' }}>
+                          <Btn variant="danger" size="sm" onClick={() => handleRevokeWsKey(k.id)}>Revoke</Btn>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
             </Card>
           )}

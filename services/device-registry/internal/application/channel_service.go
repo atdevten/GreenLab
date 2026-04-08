@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -30,6 +31,7 @@ type CreateChannelInput struct {
 	Name          string
 	Description   string
 	Visibility    string
+	Tags          []string
 	RetentionDays int // 0 means use default (90)
 }
 
@@ -48,6 +50,13 @@ func (s *ChannelService) CreateChannel(ctx context.Context, in CreateChannelInpu
 			return nil, fmt.Errorf("CreateChannel.ParseDeviceID: %w", err)
 		}
 		ch.DeviceID = &devID
+	}
+	if len(in.Tags) > 0 {
+		tagsJSON, err := json.Marshal(in.Tags)
+		if err != nil {
+			return nil, fmt.Errorf("CreateChannel.MarshalTags: %w", err)
+		}
+		ch.Tags = tagsJSON
 	}
 	if in.RetentionDays != 0 {
 		if err := ch.SetRetentionDays(in.RetentionDays); err != nil {
@@ -110,7 +119,8 @@ type UpdateChannelInput struct {
 	Name          string
 	Description   string
 	Visibility    string
-	RetentionDays int // 0 means no change
+	Tags          []string // nil means no change
+	RetentionDays int      // 0 means no change
 }
 
 func (s *ChannelService) UpdateChannel(ctx context.Context, id string, in UpdateChannelInput) (*channel.Channel, error) {
@@ -135,6 +145,13 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, id string, in Update
 		if err := ch.SetVisibility(channel.ChannelVisibility(in.Visibility)); err != nil {
 			return nil, fmt.Errorf("UpdateChannel.SetVisibility: %w", err)
 		}
+	}
+	if in.Tags != nil {
+		tagsJSON, err := json.Marshal(in.Tags)
+		if err != nil {
+			return nil, fmt.Errorf("UpdateChannel.MarshalTags: %w", err)
+		}
+		ch.Tags = tagsJSON
 	}
 	if in.RetentionDays != 0 {
 		if err := ch.SetRetentionDays(in.RetentionDays); err != nil {

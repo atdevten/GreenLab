@@ -110,6 +110,7 @@ type WorkspaceResponse struct {
 	Name        string    `json:"name"`
 	Slug        string    `json:"slug"`
 	Description string    `json:"description"`
+	MemberCount int       `json:"member_count"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 

@@ -538,10 +538,10 @@ function CreateChannelDrawer({ open, onClose, onCreate, workspaceOptions, device
 
 function apiChannelToLocal(c: ApiChannel, wsName = ''): Channel {
   const fields: FieldDef[] = (c.fields ?? []).map((f, i) => ({
-    key: f.key,
-    name: f.name,
+    key: f.name,
+    name: f.label ?? '',
     unit: f.unit ?? '',
-    type: (f.type === 'float' || f.type === 'integer' ? 'number' : f.type) as FieldDef['type'],
+    type: (f.field_type === 'float' || f.field_type === 'integer' ? 'number' : f.field_type) as FieldDef['type'],
     color: FIELD_COLORS[i % FIELD_COLORS.length],
     enabled: f.enabled !== false,
   }))
