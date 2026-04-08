@@ -95,6 +95,70 @@ func TestCreateDevice(t *testing.T) {
 		assert.Nil(t, d)
 		repo.AssertExpectations(t)
 	})
+
+	t.Run("location metadata is stored in device", func(t *testing.T) {
+		svc, repo, chanRepo, cache := newTestDeviceService(t)
+		wsID := uuid.New()
+		lat := 10.7769
+		lng := 106.7009
+
+		repo.On("Create", ctx, mock.AnythingOfType("*device.Device")).Return(nil)
+		chanRepo.On("Create", ctx, mock.AnythingOfType("*channel.Channel")).Return(nil)
+		cache.On("SetDevice", ctx, mock.AnythingOfType("*device.Device")).Return(nil)
+
+		d, _, err := svc.CreateDevice(ctx, CreateDeviceInput{
+			WorkspaceID:     wsID.String(),
+			Name:            "Farm Sensor",
+			Lat:             &lat,
+			Lng:             &lng,
+			LocationAddress: "Greenhouse A",
+		})
+		require.NoError(t, err)
+		assert.NotEmpty(t, d.Metadata)
+		assert.Contains(t, string(d.Metadata), "10.7769")
+		assert.Contains(t, string(d.Metadata), "Greenhouse A")
+	})
+
+	t.Run("channel uses provided name and visibility", func(t *testing.T) {
+		svc, repo, chanRepo, cache := newTestDeviceService(t)
+		wsID := uuid.New()
+
+		var createdChannel *channel.Channel
+		repo.On("Create", ctx, mock.AnythingOfType("*device.Device")).Return(nil)
+		chanRepo.On("Create", ctx, mock.MatchedBy(func(ch *channel.Channel) bool {
+			createdChannel = ch
+			return true
+		})).Return(nil)
+		cache.On("SetDevice", ctx, mock.AnythingOfType("*device.Device")).Return(nil)
+
+		_, ch, err := svc.CreateDevice(ctx, CreateDeviceInput{
+			WorkspaceID:      wsID.String(),
+			Name:             "Sensor",
+			ChannelName:      "Weather Station",
+			ChannelVisibility: "public",
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "Weather Station", ch.Name)
+		assert.Equal(t, channel.ChannelVisibilityPublic, ch.Visibility)
+		_ = createdChannel
+	})
+
+	t.Run("channel defaults to Channel 1 private when not specified", func(t *testing.T) {
+		svc, repo, chanRepo, cache := newTestDeviceService(t)
+		wsID := uuid.New()
+
+		repo.On("Create", ctx, mock.AnythingOfType("*device.Device")).Return(nil)
+		chanRepo.On("Create", ctx, mock.AnythingOfType("*channel.Channel")).Return(nil)
+		cache.On("SetDevice", ctx, mock.AnythingOfType("*device.Device")).Return(nil)
+
+		_, ch, err := svc.CreateDevice(ctx, CreateDeviceInput{
+			WorkspaceID: wsID.String(),
+			Name:        "Sensor",
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "Channel 1", ch.Name)
+		assert.Equal(t, channel.ChannelVisibilityPrivate, ch.Visibility)
+	})
 }
 
 func TestGetDevice(t *testing.T) {
