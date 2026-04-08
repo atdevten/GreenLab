@@ -20,9 +20,10 @@ export interface Org { id: string; name: string; slug: string; plan?: string; ow
 export interface Workspace { id: string; org_id?: string; name: string; slug: string; description?: string; plan?: string; device_count: number; channel_count: number; member_count: number; created_at: string }
 export interface WorkspaceMember { id: string; workspace_id?: string; user_id: string; name: string; email: string; role: string; joined_at: string }
 
-export interface Device { id: string; name: string; workspace_id: string; description?: string; tags?: string[]; icon?: string; status: 'active' | 'inactive' | 'blocked'; api_key: string; channel_count: number; reads_24h: number; last_seen?: string; lat?: number; lng?: number }
-export interface CreateDeviceRequest { name: string; workspace_id: string; description?: string; tags?: string[]; icon?: string }
+export interface Device { id: string; name: string; workspace_id: string; description?: string; tags?: string[]; icon?: string; status: 'active' | 'inactive' | 'blocked'; api_key: string; channel_count: number; reads_24h: number; last_seen?: string; lat?: number; lng?: number; location_address?: string }
+export interface CreateDeviceRequest { name: string; workspace_id: string; description?: string; tags?: string[]; icon?: string; lat?: number; lng?: number; location_address?: string; channel_name?: string; channel_visibility?: string }
 export interface UpdateDeviceRequest { name?: string; description?: string; tags?: string[]; icon?: string; status?: string }
+export interface CreateDeviceResponse { device: Device; channel: Channel }
 
 export interface Channel { id: string; device_id: string; name: string; visibility: 'public' | 'private'; tags?: string[]; fields: FieldDef[]; last_reading?: string; reads_24h: number; updated_at: string }
 export interface FieldDef { id?: string; key: string; name: string; unit?: string; type: 'float' | 'integer' | 'string' | 'boolean'; color?: string; enabled?: boolean }

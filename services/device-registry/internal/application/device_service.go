@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -23,10 +24,22 @@ func NewDeviceService(repo device.DeviceRepository, tx TxRunner, cache device.De
 	return &DeviceService{repo: repo, tx: tx, cache: cache, logger: logger}
 }
 
+// LocationMetadata is the JSON shape stored in Device.Metadata for location data.
+type LocationMetadata struct {
+	Lat     *float64 `json:"lat,omitempty"`
+	Lng     *float64 `json:"lng,omitempty"`
+	Address string   `json:"address,omitempty"`
+}
+
 type CreateDeviceInput struct {
-	WorkspaceID string
-	Name        string
-	Description string
+	WorkspaceID      string
+	Name             string
+	Description      string
+	Lat              *float64
+	Lng              *float64
+	LocationAddress  string
+	ChannelName      string
+	ChannelVisibility string
 }
 
 func (s *DeviceService) CreateDevice(ctx context.Context, in CreateDeviceInput) (*device.Device, *channel.Channel, error) {
@@ -38,7 +51,25 @@ func (s *DeviceService) CreateDevice(ctx context.Context, in CreateDeviceInput) 
 	if err != nil {
 		return nil, nil, fmt.Errorf("CreateDevice.NewDevice: %w", err)
 	}
-	ch, err := channel.NewChannel(wsID, "Channel 1", "", channel.ChannelVisibilityPrivate)
+	if (in.Lat != nil) != (in.Lng != nil) {
+		return nil, nil, fmt.Errorf("CreateDevice: lat and lng must both be provided or both omitted")
+	}
+	if in.Lat != nil || in.Lng != nil || in.LocationAddress != "" {
+		meta, err := json.Marshal(LocationMetadata{Lat: in.Lat, Lng: in.Lng, Address: in.LocationAddress})
+		if err != nil {
+			return nil, nil, fmt.Errorf("CreateDevice.MarshalLocation: %w", err)
+		}
+		d.Metadata = meta
+	}
+	chName := in.ChannelName
+	if chName == "" {
+		chName = "Channel 1"
+	}
+	chVisibility := channel.ChannelVisibilityPrivate
+	if in.ChannelVisibility == string(channel.ChannelVisibilityPublic) {
+		chVisibility = channel.ChannelVisibilityPublic
+	}
+	ch, err := channel.NewChannel(wsID, chName, "", chVisibility)
 	if err != nil {
 		return nil, nil, fmt.Errorf("CreateDevice.NewChannel: %w", err)
 	}

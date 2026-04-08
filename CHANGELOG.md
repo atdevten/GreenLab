@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.3.0] - 2026-04-08
+
+### Added
+
+- **Device Location**: devices can now be registered with GPS coordinates (lat/lng) and a location label (e.g. "Greenhouse A"). Location is stored in device metadata and surfaced in API responses as `lat`, `lng`, and `location_address`.
+- **Atomic channel configuration**: channel name and visibility are now set in the same `POST /api/v1/devices` request that creates the device — eliminating a separate update call and saving a round-trip during registration.
+- **Frontend test suite**: Vitest + @testing-library/react bootstrapped with initial tests for the RegisterDeviceDrawer component.
+
+### Changed
+
+- **Device registration flow**: backend now accepts `channel_name` and `channel_visibility` in `CreateDeviceRequest` and applies them to the auto-created channel atomically. Frontend no longer issues a separate `channelsApi.update()` after device creation.
+- **API types**: `CreateDeviceResponse` now returns `{ device, channel }` instead of just the device, giving callers the channel ID without a follow-up fetch.
+
+### Fixed
+
+- **Code quality**: extracted shared `LocationMetadata` type (was duplicated as anonymous structs in the service and handler layers). Frontend `lat`/`lng` stored as `number` in local state instead of round-tripping through `string`.
+- **Validation**: lat/lng values are now range-validated (`[-90,90]` / `[-180,180]`) and partial coordinate pairs (lat without lng, or vice versa) are rejected. `channel_visibility` must be `public` or `private`.
+
 ## [0.0.2.2] - 2026-04-02
 
 ### Changed

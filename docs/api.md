@@ -229,11 +229,29 @@ Response includes a `key` field — only returned on creation:
 
 #### POST /api/v1/devices
 
+Creates a device and atomically provisions a default channel. Returns both.
+
 ```json
 {
   "workspace_id": "uuid",
   "name": "Weather Station A",
-  "description": "Rooftop sensor"
+  "description": "Rooftop sensor",
+  "lat": 10.7769,
+  "lng": 106.7009,
+  "location_address": "Greenhouse A, Building 3",
+  "channel_name": "Temperature Readings",
+  "channel_visibility": "private"
+}
+```
+
+`lat`/`lng` must both be provided or both omitted. Valid ranges: lat `[-90, 90]`, lng `[-180, 180]`. `channel_visibility` must be `public` or `private` (defaults to `private`).
+
+Response:
+
+```json
+{
+  "device": { "id": "uuid", "api_key": "ts_...", "lat": 10.7769, "lng": 106.7009, "location_address": "Greenhouse A", ... },
+  "channel": { "id": "uuid", "short_id": 1, "name": "Temperature Readings", ... }
 }
 ```
 
