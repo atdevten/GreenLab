@@ -19,6 +19,7 @@ type auditEventRow struct {
 	ID           uuid.UUID `db:"id"`
 	TenantID     string    `db:"tenant_id"`
 	UserID       string    `db:"user_id"`
+	UserName     string    `db:"user_name"`
 	EventType    string    `db:"event_type"`
 	ResourceID   string    `db:"resource_id"`
 	ResourceType string    `db:"resource_type"`
@@ -33,6 +34,7 @@ func toAuditEvent(r *auditEventRow) *audit.AuditEvent {
 		ID:           r.ID,
 		TenantID:     r.TenantID,
 		UserID:       r.UserID,
+		UserName:     r.UserName,
 		EventType:    r.EventType,
 		ResourceID:   r.ResourceID,
 		ResourceType: r.ResourceType,
@@ -51,9 +53,9 @@ func NewEventRepo(db *sqlx.DB) *EventRepo { return &EventRepo{db: db} }
 // Append inserts a new audit event. This is the only write operation (no update/delete).
 func (r *EventRepo) Append(ctx context.Context, e *audit.AuditEvent) error {
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO audit_events (id, tenant_id, user_id, event_type, resource_id, resource_type, ip_address, user_agent, payload, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		e.ID, e.TenantID, e.UserID, e.EventType,
+		INSERT INTO audit_events (id, tenant_id, user_id, user_name, event_type, resource_id, resource_type, ip_address, user_agent, payload, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		e.ID, e.TenantID, e.UserID, e.UserName, e.EventType,
 		e.ResourceID, e.ResourceType, e.IPAddress, e.UserAgent,
 		e.Payload, e.CreatedAt,
 	)
@@ -63,7 +65,7 @@ func (r *EventRepo) Append(ctx context.Context, e *audit.AuditEvent) error {
 func (r *EventRepo) GetByID(ctx context.Context, id uuid.UUID) (*audit.AuditEvent, error) {
 	var row auditEventRow
 	err := r.db.GetContext(ctx, &row,
-		`SELECT id, tenant_id, user_id, event_type, resource_id, resource_type, ip_address, user_agent, payload, created_at FROM audit_events WHERE id=$1`,
+		`SELECT id, tenant_id, user_id, user_name, event_type, resource_id, resource_type, ip_address, user_agent, payload, created_at FROM audit_events WHERE id=$1`,
 		id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, audit.ErrEventNotFound
@@ -85,7 +87,7 @@ func (r *EventRepo) ListByTenant(ctx context.Context, tenantID string, filter ap
 	if filter.Search != "" {
 		args = append(args, "%"+strings.ToLower(filter.Search)+"%")
 		idx := fmt.Sprintf("$%d", len(args))
-		conds = append(conds, fmt.Sprintf("(LOWER(user_id) LIKE %s OR LOWER(event_type) LIKE %s OR LOWER(resource_id) LIKE %s)", idx, idx, idx))
+		conds = append(conds, fmt.Sprintf("(LOWER(user_id) LIKE %s OR LOWER(user_name) LIKE %s OR LOWER(event_type) LIKE %s OR LOWER(resource_id) LIKE %s)", idx, idx, idx, idx))
 	}
 
 	where := strings.Join(conds, " AND ")
@@ -94,7 +96,7 @@ func (r *EventRepo) ListByTenant(ctx context.Context, tenantID string, filter ap
 	offsetIdx := len(args)
 
 	query := fmt.Sprintf(
-		`SELECT id, tenant_id, user_id, event_type, resource_id, resource_type, ip_address, user_agent, payload, created_at
+		`SELECT id, tenant_id, user_id, user_name, event_type, resource_id, resource_type, ip_address, user_agent, payload, created_at
 		 FROM audit_events WHERE %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`,
 		where, limitIdx, offsetIdx)
 
@@ -120,7 +122,7 @@ func (r *EventRepo) ListByTenant(ctx context.Context, tenantID string, filter ap
 func (r *EventRepo) ListByResource(ctx context.Context, resourceType, resourceID string, limit, offset int) ([]*audit.AuditEvent, int64, error) {
 	var rows []*auditEventRow
 	err := r.db.SelectContext(ctx, &rows,
-		`SELECT id, tenant_id, user_id, event_type, resource_id, resource_type, ip_address, user_agent, payload, created_at FROM audit_events WHERE resource_type=$1 AND resource_id=$2 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
+		`SELECT id, tenant_id, user_id, user_name, event_type, resource_id, resource_type, ip_address, user_agent, payload, created_at FROM audit_events WHERE resource_type=$1 AND resource_id=$2 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
 		resourceType, resourceID, limit, offset)
 	if err != nil {
 		return nil, 0, err
