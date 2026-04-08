@@ -96,8 +96,8 @@ func (s *QueryService) Query(ctx context.Context, req query.QueryRequest) (*quer
 
 // QueryLatest returns the most recent reading for a channel field.
 func (s *QueryService) QueryLatest(ctx context.Context, channelID, fieldName string) (*query.LatestReading, error) {
-	if channelID == "" {
-		return nil, query.ErrInvalidChannelID
+	if err := query.ValidateQueryRequest(&query.QueryRequest{ChannelID: channelID, FieldName: fieldName}); err != nil {
+		return nil, err
 	}
 
 	cacheKey := fmt.Sprintf("latest:%s:%s", channelID, fieldName)
