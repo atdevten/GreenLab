@@ -148,7 +148,10 @@ func (r *WorkspaceRepo) UpdateMember(ctx context.Context, workspaceID, userID, r
 	if err != nil {
 		return fmt.Errorf("WorkspaceRepo.UpdateMember: %w", err)
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("WorkspaceRepo.UpdateMember: rows affected: %w", err)
+	}
 	if n == 0 {
 		return fmt.Errorf("WorkspaceRepo.UpdateMember: %w", tenant.ErrMemberNotFound)
 	}
@@ -162,7 +165,10 @@ func (r *WorkspaceRepo) RemoveMember(ctx context.Context, workspaceID, userID st
 	if err != nil {
 		return fmt.Errorf("WorkspaceRepo.RemoveMember: %w", err)
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("WorkspaceRepo.RemoveMember: rows affected: %w", err)
+	}
 	if n == 0 {
 		return fmt.Errorf("WorkspaceRepo.RemoveMember: %w", tenant.ErrMemberNotFound)
 	}
