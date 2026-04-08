@@ -77,7 +77,7 @@ func (r *APIKeyRepo) DeleteAPIKey(ctx context.Context, id, tenantID string) erro
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("APIKeyRepo.DeleteAPIKey: rows affected: %w", err)
+		return fmt.Errorf("APIKeyRepo.DeleteAPIKey: %w", err)
 	}
 	if n == 0 {
 		return fmt.Errorf("APIKeyRepo.DeleteAPIKey: %w", tenant.ErrAPIKeyNotFound)
