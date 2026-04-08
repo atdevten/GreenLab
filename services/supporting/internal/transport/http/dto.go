@@ -43,9 +43,12 @@ type AuditEventResponse struct {
 	TenantID     string    `json:"tenant_id"`
 	UserID       string    `json:"user_id"`
 	EventType    string    `json:"event_type"`
+	Action       string    `json:"action"`        // alias for event_type — frontend-expected field
 	ResourceID   string    `json:"resource_id"`
 	ResourceType string    `json:"resource_type"`
+	Target       string    `json:"target"`        // alias for resource_id — frontend-expected field
 	IPAddress    string    `json:"ip_address"`
+	IP           string    `json:"ip"`            // alias for ip_address — frontend-expected field
 	UserAgent    string    `json:"user_agent"`
 	Payload      []byte    `json:"payload,omitempty" swaggertype:"string" format:"base64"`
 	CreatedAt    time.Time `json:"created_at"`

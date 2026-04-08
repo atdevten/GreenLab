@@ -114,7 +114,7 @@ func (h *AuditHandler) ListByTenant(c *gin.Context) {
 func buildAuditCSV(events []*audit.AuditEvent) ([]byte, error) {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	header := []string{"id", "user_id", "event_type", "resource_type", "resource_id", "ip_address", "created_at"}
+	header := []string{"id", "user_id", "action", "resource_type", "target", "ip", "created_at"}
 	if err := w.Write(header); err != nil {
 		return nil, fmt.Errorf("buildAuditCSV header: %w", err)
 	}
@@ -178,9 +178,12 @@ func toAuditEventResponse(e *audit.AuditEvent) *AuditEventResponse {
 		TenantID:     e.TenantID,
 		UserID:       e.UserID,
 		EventType:    e.EventType,
+		Action:       e.EventType,  // alias
 		ResourceID:   e.ResourceID,
 		ResourceType: e.ResourceType,
+		Target:       e.ResourceID, // alias
 		IPAddress:    e.IPAddress,
+		IP:           e.IPAddress,  // alias
 		UserAgent:    e.UserAgent,
 		Payload:      e.Payload,
 		CreatedAt:    e.CreatedAt,
