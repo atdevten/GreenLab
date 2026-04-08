@@ -148,7 +148,7 @@ func (r *DeviceRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("DeviceRepo.Delete: rows affected: %w", err)
+		return fmt.Errorf("DeviceRepo.Delete: %w", err)
 	}
 	if n == 0 {
 		return fmt.Errorf("DeviceRepo.Delete: %w", device.ErrDeviceNotFound)
