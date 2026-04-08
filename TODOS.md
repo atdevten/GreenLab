@@ -370,6 +370,13 @@ All 4 active deserializers shipped: OJson, MsgPack, Binary, JSON. Protobuf stub 
 
 ---
 
+### [TODO-039] Promote device location to first-class DB columns
+**What:** Add `lat NUMERIC`, `lng NUMERIC`, `location_address TEXT` as nullable columns to the `devices` table with a migration. Remove location data from the `metadata` JSONB blob. Update `DeviceRepository` and `toDeviceResponse` to map directly from struct fields — eliminating `json.Unmarshal` on every list response.
+**Why:** Location is currently stored in `metadata` and unpacked via `json.Unmarshal` on every `toDeviceResponse` call, including list endpoints. With 100 devices per workspace that is 100 unmarshal operations per list request. First-class columns also enable spatial queries (nearest device, within-radius) without full-table JSON extraction.
+**Effort:** S human / XS CC+gstack | **Priority:** P2 | **Depends on:** none
+
+---
+
 ## Architecture Decisions Recorded (for context)
 
 These decisions should not be revisited without explicit discussion:
