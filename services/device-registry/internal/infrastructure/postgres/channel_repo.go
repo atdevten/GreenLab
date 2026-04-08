@@ -157,7 +157,7 @@ func (r *ChannelRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("ChannelRepo.Delete: rows affected: %w", err)
+		return fmt.Errorf("ChannelRepo.Delete: %w", err)
 	}
 	if n == 0 {
 		return fmt.Errorf("ChannelRepo.Delete: %w", channel.ErrChannelNotFound)
