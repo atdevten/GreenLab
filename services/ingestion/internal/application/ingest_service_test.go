@@ -36,6 +36,11 @@ func newTestIngestService(t *testing.T) (*IngestService, *mockPublisher) {
 	return svc, p
 }
 
+const (
+	testChannelID  = "550e8400-e29b-41d4-a716-446655440001"
+	testChannelID2 = "550e8400-e29b-41d4-a716-446655440002"
+)
+
 // --- tests ---
 
 func TestIngest(t *testing.T) {
@@ -43,7 +48,7 @@ func TestIngest(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		svc, p := newTestIngestService(t)
-		channelID := "42"
+		channelID := testChannelID
 
 		p.On("PublishReadings", ctx, mock.AnythingOfType("[]*domain.Reading")).Return(nil)
 
@@ -68,7 +73,7 @@ func TestIngest(t *testing.T) {
 	t.Run("empty fields returns domain error", func(t *testing.T) {
 		svc, _ := newTestIngestService(t)
 		err := svc.Ingest(ctx, IngestInput{
-			ChannelID: "42",
+			ChannelID: testChannelID,
 			Fields:    map[string]float64{},
 		})
 		assert.ErrorIs(t, err, domain.ErrEmptyFields)
@@ -79,7 +84,7 @@ func TestIngest(t *testing.T) {
 		svc := NewIngestService(p, slog.Default(), 24*time.Hour)
 		future := time.Now().UTC().Add(time.Hour)
 		err := svc.Ingest(ctx, IngestInput{
-			ChannelID: "42",
+			ChannelID: testChannelID,
 			Fields:    map[string]float64{"x": 1},
 			Timestamp: &future,
 		})
@@ -91,7 +96,7 @@ func TestIngest(t *testing.T) {
 		svc := NewIngestService(p, slog.Default(), 24*time.Hour)
 		old := time.Now().UTC().Add(-48 * time.Hour)
 		err := svc.Ingest(ctx, IngestInput{
-			ChannelID: "42",
+			ChannelID: testChannelID,
 			Fields:    map[string]float64{"x": 1},
 			Timestamp: &old,
 		})
@@ -100,7 +105,7 @@ func TestIngest(t *testing.T) {
 
 	t.Run("custom timestamp is preserved", func(t *testing.T) {
 		svc, p := newTestIngestService(t)
-		channelID := "42"
+		channelID := testChannelID
 		ts := time.Now().UTC().Add(-time.Minute) // recent, valid timestamp
 
 		p.On("PublishReadings", ctx, mock.MatchedBy(func(readings []*domain.Reading) bool {
@@ -118,7 +123,7 @@ func TestIngest(t *testing.T) {
 
 	t.Run("publisher error is returned", func(t *testing.T) {
 		svc, p := newTestIngestService(t)
-		channelID := "42"
+		channelID := testChannelID
 		kafkaErr := errors.New("kafka down")
 
 		p.On("PublishReadings", ctx, mock.AnythingOfType("[]*domain.Reading")).Return(kafkaErr)
@@ -130,7 +135,7 @@ func TestIngest(t *testing.T) {
 
 	t.Run("no field timestamps produces one reading", func(t *testing.T) {
 		svc, p := newTestIngestService(t)
-		channelID := "42"
+		channelID := testChannelID
 
 		p.On("PublishReadings", ctx, mock.MatchedBy(func(readings []*domain.Reading) bool {
 			return len(readings) == 1
@@ -146,7 +151,7 @@ func TestIngest(t *testing.T) {
 
 	t.Run("all fields share same per-field timestamp produces one reading", func(t *testing.T) {
 		svc, p := newTestIngestService(t)
-		channelID := "42"
+		channelID := testChannelID
 		sharedTS := time.Now().UTC().Add(-time.Minute)
 
 		p.On("PublishReadings", ctx, mock.MatchedBy(func(readings []*domain.Reading) bool {
@@ -171,7 +176,7 @@ func TestIngest(t *testing.T) {
 
 	t.Run("fields with different timestamps produce multiple readings", func(t *testing.T) {
 		svc, p := newTestIngestService(t)
-		channelID := "42"
+		channelID := testChannelID
 		ts1 := time.Now().UTC().Add(-2 * time.Minute)
 		ts2 := time.Now().UTC().Add(-1 * time.Minute)
 
@@ -194,7 +199,7 @@ func TestIngest(t *testing.T) {
 	t.Run("per-field timestamp too old returns error", func(t *testing.T) {
 		p := &mockPublisher{}
 		svc := NewIngestService(p, slog.Default(), 24*time.Hour)
-		channelID := "42"
+		channelID := testChannelID
 		oldTS := time.Now().UTC().Add(-48 * time.Hour)
 
 		err := svc.Ingest(ctx, IngestInput{
@@ -211,7 +216,7 @@ func TestIngest(t *testing.T) {
 	t.Run("per-field timestamp in the future returns error", func(t *testing.T) {
 		p := &mockPublisher{}
 		svc := NewIngestService(p, slog.Default(), 24*time.Hour)
-		channelID := "42"
+		channelID := testChannelID
 		futureTS := time.Now().UTC().Add(time.Hour)
 
 		err := svc.Ingest(ctx, IngestInput{
@@ -227,7 +232,7 @@ func TestIngest(t *testing.T) {
 
 	t.Run("mixed: some fields have timestamps, others fall back to default", func(t *testing.T) {
 		svc, p := newTestIngestService(t)
-		channelID := "42"
+		channelID := testChannelID
 		defaultTS := time.Now().UTC().Add(-5 * time.Minute)
 		fieldTS := time.Now().UTC().Add(-1 * time.Minute)
 
@@ -251,7 +256,7 @@ func TestIngest(t *testing.T) {
 
 	t.Run("nil per-field timestamp entry falls back to default", func(t *testing.T) {
 		svc, p := newTestIngestService(t)
-		channelID := "42"
+		channelID := testChannelID
 
 		// Both fields end up at defaultTS (nil entry treated as absent) → one reading
 		p.On("PublishReadings", ctx, mock.MatchedBy(func(readings []*domain.Reading) bool {
@@ -278,8 +283,8 @@ func TestIngestBatch(t *testing.T) {
 		svc, p := newTestIngestService(t)
 
 		inputs := []IngestInput{
-			{ChannelID: "42", Fields: map[string]float64{"a": 1}},
-			{ChannelID: "43", Fields: map[string]float64{"b": 2}},
+			{ChannelID: testChannelID, Fields: map[string]float64{"a": 1}},
+			{ChannelID: testChannelID2, Fields: map[string]float64{"b": 2}},
 		}
 
 		p.On("PublishReadings", ctx, mock.AnythingOfType("[]*domain.Reading")).Return(nil)
@@ -299,7 +304,7 @@ func TestIngestBatch(t *testing.T) {
 	t.Run("invalid channel_id in batch returns domain error with index", func(t *testing.T) {
 		svc, _ := newTestIngestService(t)
 		err := svc.IngestBatch(ctx, []IngestInput{
-			{ChannelID: "42", Fields: map[string]float64{"a": 1}},
+			{ChannelID: testChannelID, Fields: map[string]float64{"a": 1}},
 			{ChannelID: "bad-uuid", Fields: map[string]float64{"b": 2}},
 		})
 		assert.ErrorIs(t, err, domain.ErrInvalidChannelID)
@@ -309,8 +314,8 @@ func TestIngestBatch(t *testing.T) {
 	t.Run("empty fields in batch returns domain error with index", func(t *testing.T) {
 		svc, _ := newTestIngestService(t)
 		err := svc.IngestBatch(ctx, []IngestInput{
-			{ChannelID: "42", Fields: map[string]float64{"a": 1}},
-			{ChannelID: "42", Fields: map[string]float64{}},
+			{ChannelID: testChannelID, Fields: map[string]float64{"a": 1}},
+			{ChannelID: testChannelID, Fields: map[string]float64{}},
 		})
 		assert.ErrorIs(t, err, domain.ErrEmptyFields)
 		assert.ErrorContains(t, err, "item 1")
@@ -323,7 +328,7 @@ func TestIngestBatch(t *testing.T) {
 		p.On("PublishReadings", ctx, mock.AnythingOfType("[]*domain.Reading")).Return(kafkaErr)
 
 		err := svc.IngestBatch(ctx, []IngestInput{
-			{ChannelID: "42", Fields: map[string]float64{"x": 1}},
+			{ChannelID: testChannelID, Fields: map[string]float64{"x": 1}},
 		})
 		assert.ErrorIs(t, err, kafkaErr)
 		p.AssertExpectations(t)
@@ -331,7 +336,7 @@ func TestIngestBatch(t *testing.T) {
 
 	t.Run("batch item with per-field timestamps expands into multiple readings", func(t *testing.T) {
 		svc, p := newTestIngestService(t)
-		channelID := "42"
+		channelID := testChannelID
 		ts1 := time.Now().UTC().Add(-3 * time.Minute)
 		ts2 := time.Now().UTC().Add(-1 * time.Minute)
 
@@ -360,9 +365,9 @@ func TestIngestBatch(t *testing.T) {
 		futureTS := time.Now().UTC().Add(time.Hour)
 
 		err := svc.IngestBatch(ctx, []IngestInput{
-			{ChannelID: "42", Fields: map[string]float64{"a": 1}},
+			{ChannelID: testChannelID, Fields: map[string]float64{"a": 1}},
 			{
-				ChannelID: "42",
+				ChannelID: testChannelID,
 				Fields:    map[string]float64{"temp": 20.0},
 				FieldTimestamps: map[string]*time.Time{
 					"temp": &futureTS,
@@ -391,7 +396,7 @@ func (m *mockReplayDLQ) IncrFailureMetric(ctx context.Context) error {
 
 func TestIngestReplay(t *testing.T) {
 	ctx := context.Background()
-	channelID := "42"
+	channelID := testChannelID
 
 	t.Run("success — publishes with replay header and returns nil", func(t *testing.T) {
 		svc, p := newTestIngestService(t)
