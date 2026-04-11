@@ -100,7 +100,7 @@ func (s *ProvisionService) Provision(ctx context.Context, in ProvisionInput) (*P
 	}
 
 	if in.ExistingChannelID != "" {
-		return s.provisionWithExistingChannel(ctx, in, d)
+		return s.provisionWithExistingChannel(ctx, in, wsID, d)
 	}
 	return s.provisionWithNewChannel(ctx, in, wsID, d)
 }
@@ -145,7 +145,7 @@ func (s *ProvisionService) provisionWithNewChannel(ctx context.Context, in Provi
 
 // provisionWithExistingChannel links the new device to a channel that already exists.
 // The channel's device_id is updated transactionally.
-func (s *ProvisionService) provisionWithExistingChannel(ctx context.Context, in ProvisionInput, d *device.Device) (*ProvisionResult, error) {
+func (s *ProvisionService) provisionWithExistingChannel(ctx context.Context, in ProvisionInput, wsID uuid.UUID, d *device.Device) (*ProvisionResult, error) {
 	chID, err := uuid.Parse(in.ExistingChannelID)
 	if err != nil {
 		return nil, fmt.Errorf("Provision.ParseChannelID: %w", err)
@@ -155,6 +155,11 @@ func (s *ProvisionService) provisionWithExistingChannel(ctx context.Context, in 
 	ch, err := s.channels.GetByID(ctx, chID)
 	if err != nil {
 		return nil, fmt.Errorf("Provision.GetChannel: %w", err)
+	}
+
+	// Verify the channel belongs to the same workspace as the device being provisioned.
+	if ch.WorkspaceID != wsID {
+		return nil, fmt.Errorf("Provision: channel does not belong to workspace: %w", channel.ErrChannelNotFound)
 	}
 
 	fields, err := buildFields(ch.ID, in.Fields)
