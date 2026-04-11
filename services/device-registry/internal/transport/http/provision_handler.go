@@ -35,7 +35,7 @@ func mapProvisionError(err error) error {
 	case errors.Is(err, channel.ErrInvalidName), errors.Is(err, channel.ErrInvalidVisibility):
 		return apierr.BadRequest(err.Error())
 	case errors.Is(err, channel.ErrChannelNotFound):
-		return apierr.BadRequest(err.Error())
+		return apierr.NotFound("channel")
 	case errors.Is(err, field.ErrInvalidName), errors.Is(err, field.ErrInvalidPosition), errors.Is(err, field.ErrInvalidFieldType):
 		return apierr.BadRequest(err.Error())
 	default:
