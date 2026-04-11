@@ -1,7 +1,7 @@
 package domain
 
 import (
-	"strconv"
+	"regexp"
 	"time"
 )
 
@@ -14,11 +14,15 @@ type Reading struct {
 	Timestamp time.Time
 }
 
-// ValidateChannelID returns ErrInvalidChannelID if id is not a positive integer string.
-// Uses int32 bounds to match PostgreSQL SERIAL (INT4, max 2 147 483 647).
+var uuidRE = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// ValidateChannelID returns ErrInvalidChannelID if id is not a valid, non-nil UUID string.
+// The nil UUID (00000000-0000-0000-0000-000000000000) is rejected.
 func ValidateChannelID(id string) error {
-	n, err := strconv.ParseInt(id, 10, 32)
-	if err != nil || n <= 0 {
+	if !uuidRE.MatchString(id) {
+		return ErrInvalidChannelID
+	}
+	if id == "00000000-0000-0000-0000-000000000000" {
 		return ErrInvalidChannelID
 	}
 	return nil
