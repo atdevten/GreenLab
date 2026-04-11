@@ -477,6 +477,7 @@ function Step2({
   // Fetch existing channels for this workspace when mode switches to 'existing'
   useEffect(() => {
     if (channelMode !== 'existing' || !workspaceId) return
+    setWsChannels([])
     setChLoading(true)
     channelsApi.list({ workspace_id: workspaceId })
       .then(r => setWsChannels(r.data))
@@ -625,18 +626,6 @@ function Step2({
 
           {/* Field builder */}
           <FieldBuilder fields={fields} setFields={setFields} />
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
-            <Btn variant="ghost" size="sm" onClick={() => {
-              if (fields.length >= 8) return
-              setFields([...fields, { name: '', unit: '', type: 'float', key: '' }])
-            }} disabled={fields.length >= 8}>
-              + Add Field
-            </Btn>
-            {fields.length >= 8 && (
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>Maximum 8 fields reached</span>
-            )}
-          </div>
 
           {/* Hint */}
           <div style={{
