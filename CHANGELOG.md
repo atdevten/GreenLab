@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.0.0] - 2026-04-11
+
+### Changed
+
+- **Channel IDs are now UUIDs**: the ingestion API requires channel IDs to be valid UUID strings (e.g. `550e8400-e29b-41d4-a716-446655440001`). Plain integers are no longer accepted. This aligns channel identification with the device-registry's UUID primary keys.
+- **UUID channel lookup in device validation**: the internal API key validation query now uses a typed UUID comparison (`c.id = $2::uuid`) instead of a text cast, preserving index usage on large tables.
+- **Sidebar badges removed**: the Workspaces, Devices, and Alert Rules sidebar items no longer show hardcoded placeholder counts. Dynamic badge counts will be added when the data source is wired up.
+
+### Fixed
+
+- Nil UUID (`00000000-0000-0000-0000-000000000000`) is now explicitly rejected by channel ID validation.
+
 ## [0.0.3.0] - 2026-04-08
 
 ### Added
