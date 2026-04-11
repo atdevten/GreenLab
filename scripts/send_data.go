@@ -5,7 +5,7 @@
 //
 //	go run scripts/send_data.go \
 //	  --url  http://localhost:9080 \
-//	  --channel d957bb9f-ebc4-4eec-bb69-086f2e925bbc \
+//	  --channel 2 \
 //	  --api-key <your-api-key> \
 //	  --interval 5s \
 //	  --count 0        # 0 = run forever

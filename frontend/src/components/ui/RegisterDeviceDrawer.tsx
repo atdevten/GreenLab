@@ -1,6 +1,8 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { Btn } from './Button'
 import { Dot } from './Badge'
+import { channelsApi } from '../../api/channels'
+import type { Channel } from '../../types'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -26,6 +28,7 @@ export interface NewDevice {
   channelId: string
   visibility: 'private' | 'public'
   fields: Field[]
+  existingChannelId?: string  // set when user picks an existing channel
   apiKey: string
 }
 
@@ -304,211 +307,338 @@ function Step1({
   )
 }
 
-// ── Step 2: Channels & Fields ──────────────────────────────────────────────
+// ── Step 2: Channel & Fields ───────────────────────────────────────────────
 
-function Step2({
-  channelName, setChannelName,
-  visibility, setVisibility,
-  fields, setFields,
+// Flat field builder used by the "new channel" mode in Step 2
+function FieldBuilder({
+  fields,
+  setFields,
 }: {
-  channelName: string; setChannelName(v: string): void
-  visibility: 'private' | 'public'; setVisibility(v: 'private' | 'public'): void
-  fields: Field[]; setFields(f: Field[]): void
+  fields: Field[]
+  setFields: (f: Field[]) => void
 }) {
-  function updateField(i: number, field: keyof Field, value: string) {
-    setFields(fields.map((f, idx) => {
-      if (idx !== i) return f
-      const updated: Field = { ...f, [field]: value }
-      if (field === 'name' && !f.keyLocked) {
-        updated.key = toFieldKey(value)
-      }
-      if (field === 'key') {
-        updated.keyLocked = value.length > 0
-      }
+  function updateField(fi: number, key: keyof Field, value: string) {
+    setFields(fields.map((f, j) => {
+      if (j !== fi) return f
+      const updated: Field = { ...f, [key]: value }
+      if (key === 'name' && !f.keyLocked) updated.key = toFieldKey(value)
+      if (key === 'key') updated.keyLocked = value.length > 0
       return updated
     }))
   }
 
   function addField() {
     if (fields.length >= 8) return
-    setFields([...fields, { name: '', unit: '', type: 'float', key: '' }])
+    setFields([...fields, { name: '', unit: '', type: 'float' as const, key: '' }])
   }
 
-  function removeField(i: number) {
+  function removeField(fi: number) {
     if (fields.length <= 1) return
-    setFields(fields.filter((_, idx) => idx !== i))
+    setFields(fields.filter((_, j) => j !== fi))
   }
+
+  const keyCounts = fields.reduce<Record<string, number>>((acc, f) => {
+    if (f.key) acc[f.key] = (acc[f.key] ?? 0) + 1
+    return acc
+  }, {})
+  const dupKeys = new Set(Object.entries(keyCounts).filter(([, n]) => n > 1).map(([k]) => k))
+
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <label style={label}>
+        Fields{' '}
+        <span style={{ color: 'var(--muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+          ({fields.length}/8)
+        </span>
+      </label>
+
+      {/* Column header */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: '28px 1fr 72px 100px 32px',
+        gap: 6, padding: '0 4px', marginBottom: 4,
+      }}>
+        {['', 'Field name', 'Unit', 'Type', ''].map((h, i) => (
+          <span key={i} style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+            {h}
+          </span>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {fields.map((f, fi) => {
+          const isDup = f.key ? dupKeys.has(f.key) : false
+          return (
+            <div key={fi} style={{
+              background: 'var(--surface2)',
+              border: `1px solid ${isDup ? 'var(--red)' : 'var(--border)'}`,
+              borderRadius: 'var(--radius)', padding: '6px 10px',
+              transition: 'border-color 180ms ease',
+            }}>
+              {/* Top row */}
+              <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 72px 100px 32px', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-lt)', textAlign: 'center' }}>F{fi + 1}</span>
+                <input
+                  value={f.name}
+                  onChange={e => updateField(fi, 'name', e.target.value)}
+                  placeholder="Field name"
+                  style={{ ...inp, padding: '5px 8px', fontSize: 12 }}
+                />
+                <input
+                  value={f.unit}
+                  onChange={e => updateField(fi, 'unit', e.target.value)}
+                  placeholder="Unit"
+                  style={{ ...inp, padding: '5px 8px', fontSize: 12 }}
+                />
+                <select
+                  value={f.type}
+                  onChange={e => updateField(fi, 'type', e.target.value)}
+                  style={{ ...inp, padding: '5px 6px', fontSize: 12, appearance: 'none' }}
+                >
+                  <option value="float">float</option>
+                  <option value="integer">integer</option>
+                  <option value="string">string</option>
+                  <option value="boolean">boolean</option>
+                </select>
+                <button
+                  onClick={() => removeField(fi)}
+                  disabled={fields.length <= 1}
+                  style={{
+                    width: 28, height: 28, borderRadius: 'var(--radius)',
+                    display: 'grid', placeItems: 'center', fontSize: 13,
+                    color: 'var(--muted)', background: 'transparent',
+                    border: '1px solid var(--border)',
+                    cursor: fields.length <= 1 ? 'default' : 'pointer',
+                    opacity: fields.length <= 1 ? .3 : 1,
+                    transition: 'all 180ms ease',
+                  }}
+                >✕</button>
+              </div>
+
+              {/* Key row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, paddingLeft: 34 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', flexShrink: 0 }}>key</span>
+                <input
+                  value={f.key}
+                  onChange={e => updateField(fi, 'key', e.target.value)}
+                  placeholder="auto"
+                  style={{
+                    ...inp, padding: '3px 7px', fontSize: 11,
+                    fontFamily: 'monospace', color: isDup ? 'var(--red)' : 'var(--cyan)',
+                    flex: 1,
+                  }}
+                />
+                {f.keyLocked && (
+                  <span
+                    title="Key manually set — won't auto-update from label"
+                    style={{ fontSize: 12, cursor: 'default', flexShrink: 0 }}
+                  >🔒</span>
+                )}
+              </div>
+              {isDup && (
+                <div style={{ fontSize: 10, color: 'var(--red)', marginTop: 3, paddingLeft: 34, fontWeight: 600 }}>
+                  Duplicate key — must be unique
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+        <Btn variant="ghost" size="sm" onClick={addField} disabled={fields.length >= 8}>
+          + Add Field
+        </Btn>
+        {fields.length >= 8 && (
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>Maximum 8 fields reached</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Step2({
+  channelName, setChannelName,
+  visibility, setVisibility,
+  fields, setFields,
+  workspaceId,
+  channelMode, setChannelMode,
+  existingChannelId, setExistingChannelId,
+}: {
+  channelName: string; setChannelName(v: string): void
+  visibility: 'private' | 'public'; setVisibility(v: 'private' | 'public'): void
+  fields: Field[]; setFields(f: Field[]): void
+  workspaceId: string
+  channelMode: 'new' | 'existing'; setChannelMode(m: 'new' | 'existing'): void
+  existingChannelId: string; setExistingChannelId(id: string): void
+}) {
+  const [wsChannels,    setWsChannels]    = useState<Channel[]>([])
+  const [chLoading,     setChLoading]     = useState(false)
+
+  // Fetch existing channels for this workspace when mode switches to 'existing'
+  useEffect(() => {
+    if (channelMode !== 'existing' || !workspaceId) return
+    setWsChannels([])
+    setChLoading(true)
+    channelsApi.list({ workspace_id: workspaceId })
+      .then(r => setWsChannels(r.data))
+      .catch(() => setWsChannels([]))
+      .finally(() => setChLoading(false))
+  }, [channelMode, workspaceId])
 
   return (
     <div>
-      <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>
-        Define the channel this device will publish to and its measurement fields (up to 8).
+      <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
+        Choose an existing channel to link this device to, or create a new one with custom fields.
       </p>
 
-      {/* Channel name */}
-      <div style={{ marginBottom: 16 }}>
-        <label style={label}>Channel Name <span style={{ color: 'var(--red)' }}>*</span></label>
-        <input
-          value={channelName}
-          onChange={e => setChannelName(e.target.value)}
-          placeholder="e.g. Greenhouse Climate"
-          style={inp}
-          autoFocus
-        />
+      {/* Mode toggle */}
+      <div style={{
+        display: 'flex', gap: 4, marginBottom: 20,
+        background: 'var(--surface2)', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius)', padding: 4,
+      }}>
+        {(['new', 'existing'] as const).map(m => (
+          <button key={m} onClick={() => setChannelMode(m)} style={{
+            flex: 1, padding: '6px 0', fontSize: 12, fontWeight: 600,
+            border: 'none', borderRadius: 'calc(var(--radius) - 2px)', cursor: 'pointer',
+            background: channelMode === m ? 'var(--accent)' : 'transparent',
+            color: channelMode === m ? '#fff' : 'var(--muted)',
+            transition: 'background .15s, color .15s',
+          }}>
+            {m === 'new' ? '+ New Channel' : '📋 Select Existing'}
+          </button>
+        ))}
       </div>
 
-      {/* Visibility */}
-      <div style={{ marginBottom: 20 }}>
-        <label style={label}>Visibility</label>
-        <div style={{ display: 'flex', gap: 10 }}>
-          {(['private', 'public'] as const).map(v => (
-            <div
-              key={v}
-              onClick={() => setVisibility(v)}
-              style={{
-                flex: 1, border: `2px solid ${visibility === v ? 'var(--accent)' : 'var(--border)'}`,
-                background: visibility === v ? 'rgba(37,99,235,.1)' : 'transparent',
-                borderRadius: 'var(--radius)', padding: '10px 14px',
-                cursor: 'pointer', transition: 'all 180ms ease',
-              }}
-            >
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>
-                {v === 'private' ? '🔒 Private' : '🌐 Public'}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                {v === 'private' ? 'Only your workspace can read' : 'Anyone with the channel ID'}
-              </div>
+      {/* ── Existing channel picker ── */}
+      {channelMode === 'existing' && (
+        <div>
+          {chLoading && (
+            <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--muted)', fontSize: 13 }}>
+              Loading channels…
             </div>
-          ))}
-        </div>
-      </div>
+          )}
 
-      {/* Field builder */}
-      <div style={{ marginBottom: 16 }}>
-        <label style={label}>
-          Fields{' '}
-          <span style={{ color: 'var(--muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
-            ({fields.length}/8)
-          </span>
-        </label>
+          {!chLoading && wsChannels.length === 0 && (
+            <div style={{
+              textAlign: 'center', padding: '32px 16px',
+              color: 'var(--muted)', fontSize: 13,
+              background: 'var(--surface2)', borderRadius: 'var(--radius)',
+              border: '1px solid var(--border)',
+            }}>
+              No channels found in this workspace. Create a new channel instead.
+            </div>
+          )}
 
-        {/* Column header */}
-        <div style={{
-          display: 'grid', gridTemplateColumns: '28px 1fr 72px 100px 32px',
-          gap: 6, padding: '0 4px', marginBottom: 4,
-        }}>
-          {['', 'Field name', 'Unit', 'Type', ''].map((h, i) => (
-            <span key={i} style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-              {h}
-            </span>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {(() => {
-            const keyCounts = fields.reduce<Record<string, number>>((acc, f) => {
-              if (f.key) acc[f.key] = (acc[f.key] ?? 0) + 1
-              return acc
-            }, {})
-            const dupKeys = new Set(Object.entries(keyCounts).filter(([, n]) => n > 1).map(([k]) => k))
-
-            return fields.map((f, i) => {
-              const isDup = f.key ? dupKeys.has(f.key) : false
-              return (
-                <div key={i} style={{
-                  background: 'var(--surface2)',
-                  border: `1px solid ${isDup ? 'var(--red)' : 'var(--border)'}`,
-                  borderRadius: 'var(--radius)', padding: '6px 10px',
-                  transition: 'border-color 180ms ease',
-                }}>
-                  {/* Top row */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 72px 100px 32px', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-lt)', textAlign: 'center' }}>F{i + 1}</span>
-                    <input
-                      value={f.name}
-                      onChange={e => updateField(i, 'name', e.target.value)}
-                      placeholder="Field name"
-                      style={{ ...inp, padding: '5px 8px', fontSize: 12 }}
-                    />
-                    <input
-                      value={f.unit}
-                      onChange={e => updateField(i, 'unit', e.target.value)}
-                      placeholder="Unit"
-                      style={{ ...inp, padding: '5px 8px', fontSize: 12 }}
-                    />
-                    <select
-                      value={f.type}
-                      onChange={e => updateField(i, 'type', e.target.value)}
-                      style={{ ...inp, padding: '5px 6px', fontSize: 12, appearance: 'none' }}
-                    >
-                      <option value="float">float</option>
-                      <option value="integer">integer</option>
-                      <option value="string">string</option>
-                      <option value="boolean">boolean</option>
-                    </select>
-                    <button
-                      onClick={() => removeField(i)}
-                      disabled={fields.length <= 1}
-                      style={{
-                        width: 28, height: 28, borderRadius: 'var(--radius)',
-                        display: 'grid', placeItems: 'center', fontSize: 13,
-                        color: 'var(--muted)', background: 'transparent',
-                        border: '1px solid var(--border)',
-                        cursor: fields.length <= 1 ? 'default' : 'pointer',
-                        opacity: fields.length <= 1 ? .3 : 1,
-                        transition: 'all 180ms ease',
-                      }}
-                    >✕</button>
-                  </div>
-
-                  {/* Key row */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, paddingLeft: 34 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', flexShrink: 0 }}>key</span>
-                    <input
-                      value={f.key}
-                      onChange={e => updateField(i, 'key', e.target.value)}
-                      placeholder="auto"
-                      style={{
-                        ...inp, padding: '3px 7px', fontSize: 11,
-                        fontFamily: 'monospace', color: isDup ? 'var(--red)' : 'var(--cyan)',
-                        flex: 1,
-                      }}
-                    />
-                    {f.keyLocked && (
-                      <span
-                        title="Key manually set — won't auto-update from label"
-                        style={{ fontSize: 12, cursor: 'default', flexShrink: 0 }}
-                      >🔒</span>
+          {!chLoading && wsChannels.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {wsChannels.map(ch => {
+                const selected = ch.id === existingChannelId
+                return (
+                  <div
+                    key={ch.id}
+                    onClick={() => setExistingChannelId(ch.id)}
+                    style={{
+                      border: `2px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                      background: selected ? 'rgba(37,99,235,.08)' : 'var(--surface2)',
+                      borderRadius: 'var(--radius)', padding: '12px 14px',
+                      cursor: 'pointer', transition: 'all 180ms ease',
+                      display: 'flex', alignItems: 'center', gap: 12,
+                    }}
+                  >
+                    <span style={{ fontSize: 18, flexShrink: 0 }}>📡</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{ch.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace', marginTop: 2 }}>
+                        {ch.id}
+                      </div>
+                    </div>
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99,
+                      background: ch.visibility === 'public' ? 'rgba(34,197,94,.12)' : 'rgba(139,148,158,.12)',
+                      color: ch.visibility === 'public' ? 'var(--green)' : 'var(--muted)',
+                      textTransform: 'uppercase', letterSpacing: '.05em', flexShrink: 0,
+                    }}>
+                      {ch.visibility === 'public' ? '🌐 Public' : '🔒 Private'}
+                    </span>
+                    {selected && (
+                      <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: 16, flexShrink: 0 }}>✓</span>
                     )}
                   </div>
-                  {isDup && (
-                    <div style={{ fontSize: 10, color: 'var(--red)', marginTop: 3, paddingLeft: 34, fontWeight: 600 }}>
-                      Duplicate key — must be unique
-                    </div>
-                  )}
-                </div>
-              )
-            })
-          })()}
-        </div>
+                )
+              })}
+            </div>
+          )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
-          <Btn variant="ghost" size="sm" onClick={addField} disabled={fields.length >= 8}>
-            + Add Field
-          </Btn>
-          {fields.length >= 8 && (
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>Maximum 8 fields reached</span>
+          {!chLoading && existingChannelId && (
+            <div style={{
+              marginTop: 14, fontSize: 12, color: 'var(--muted)',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <span>ℹ️</span>
+              <span>The device will be linked to this channel.</span>
+            </div>
           )}
         </div>
-      </div>
+      )}
 
-      <div style={{
-        background: 'rgba(37,99,235,.08)', border: '1px solid rgba(37,99,235,.2)',
-        borderRadius: 'var(--radius)', padding: '12px 14px',
-        fontSize: 12, color: 'var(--accent-lt)',
-      }}>
-        💡 You can add more channels and modify fields at any time from the Channels page.
-      </div>
+      {/* ── New channel form ── */}
+      {channelMode === 'new' && (
+        <div>
+          {/* Channel name */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={label}>Channel Name <span style={{ color: 'var(--red)' }}>*</span></label>
+            <input
+              value={channelName}
+              onChange={e => setChannelName(e.target.value)}
+              placeholder="e.g. Greenhouse Climate"
+              style={inp}
+              autoFocus
+            />
+          </div>
+
+          {/* Visibility toggle */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={label}>Visibility</label>
+            <div style={{ display: 'flex', gap: 10 }}>
+              {(['private', 'public'] as const).map(v => (
+                <div
+                  key={v}
+                  onClick={() => setVisibility(v)}
+                  style={{
+                    flex: 1,
+                    border: `2px solid ${visibility === v ? 'var(--accent)' : 'var(--border)'}`,
+                    background: visibility === v ? 'rgba(37,99,235,.1)' : 'transparent',
+                    borderRadius: 'var(--radius)', padding: '10px 14px',
+                    cursor: 'pointer', transition: 'all 180ms ease',
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>
+                    {v === 'private' ? '🔒 Private' : '🌐 Public'}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                    {v === 'private' ? 'Only your workspace can read' : 'Anyone with the channel ID'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Field builder */}
+          <FieldBuilder fields={fields} setFields={setFields} />
+
+          {/* Hint */}
+          <div style={{
+            marginTop: 16, display: 'flex', gap: 8, alignItems: 'flex-start',
+            background: 'rgba(37,99,235,.08)', border: '1px solid rgba(37,99,235,.2)',
+            borderRadius: 'var(--radius)', padding: '10px 14px',
+            fontSize: 12, color: 'var(--accent-lt)',
+          }}>
+            <span style={{ flexShrink: 0 }}>💡</span>
+            <span>You can add more channels from the Channels page after registering.</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -868,11 +998,13 @@ export function RegisterDeviceDrawer({ open, onClose, onRegister, workspaces: wo
   const [lng,           setLng]           = useState('')
   const [locationLabel, setLocationLabel] = useState('')
 
-  // Step 2 state
-  const [channelName, setChannelName] = useState('')
-  const [visibility,  setVisibility]  = useState<'private' | 'public'>('private')
-  const [fields,      setFields]      = useState<Field[]>(DEVICE_TYPES[0].defaultFields)
-  const [submitting,  setSubmitting]  = useState(false)
+  // Step 2 state — flat single-channel
+  const [channelName,       setChannelName]       = useState('')
+  const [visibility,        setVisibility]        = useState<'private' | 'public'>('private')
+  const [fields,            setFields]            = useState<Field[]>(DEVICE_TYPES[0].defaultFields)
+  const [channelMode,       setChannelMode]       = useState<'new' | 'existing'>('new')
+  const [existingChannelId, setExistingChannelId] = useState('')
+  const [submitting,        setSubmitting]        = useState(false)
 
   // Step 3 — stored in a ref so it's immediately available on render
   const deviceRef = useRef<NewDevice | null>(null)
@@ -883,12 +1015,14 @@ export function RegisterDeviceDrawer({ open, onClose, onRegister, workspaces: wo
   }
 
   const step1Valid = name.trim().length > 0
-  const step2Valid = channelName.trim().length > 0
+  const step2Valid = channelMode === 'new'
+    ? channelName.trim().length > 0
+    : existingChannelId.length > 0
 
   async function advance() {
     if (step === 1) {
       if (!step1Valid) return
-      // Seed channel name from device name + type when entering step 2
+      // Seed channel name from device name + type when entering step 2 (only if empty)
       if (!channelName) {
         setChannelName(`${name.trim()} — ${DEVICE_TYPES[typeIdx].name}`)
       }
@@ -899,20 +1033,21 @@ export function RegisterDeviceDrawer({ open, onClose, onRegister, workspaces: wo
     if (step === 2) {
       if (!step2Valid) return
       const device: NewDevice = {
-        icon:          DEVICE_TYPES[typeIdx].icon,
-        name:          name.trim(),
-        id:            genId(),
+        icon:              DEVICE_TYPES[typeIdx].icon,
+        name:              name.trim(),
+        id:                genId(),
         workspace,
         description,
         tags,
         lat,
         lng,
         locationLabel,
-        channelName:   channelName.trim(),
-        channelId:     '',
-        visibility,
-        fields,
-        apiKey:        genApiKey(),
+        channelName:       channelMode === 'new' ? channelName.trim() : '',
+        channelId:         '',
+        visibility:        channelMode === 'new' ? visibility : 'private',
+        fields:            channelMode === 'new' ? fields : [],
+        existingChannelId: channelMode === 'existing' ? existingChannelId : undefined,
+        apiKey:            genApiKey(),
       }
       setSubmitting(true)
       try {
@@ -937,8 +1072,8 @@ export function RegisterDeviceDrawer({ open, onClose, onRegister, workspaces: wo
       setStep(1); setName(''); setTypeIdx(0)
       setWorkspace(workspaceProp[0]?.id ?? ''); setDescription(''); setTags('')
       setLat(''); setLng(''); setLocationLabel('')
-      setChannelName(''); setVisibility('private')
-      setFields(DEVICE_TYPES[0].defaultFields)
+      setChannelName(''); setVisibility('private'); setFields(DEVICE_TYPES[0].defaultFields)
+      setChannelMode('new'); setExistingChannelId('')
       setSubmitting(false)
       deviceRef.current = null
     }, 300)
@@ -1006,6 +1141,9 @@ export function RegisterDeviceDrawer({ open, onClose, onRegister, workspaces: wo
               channelName={channelName} setChannelName={setChannelName}
               visibility={visibility} setVisibility={setVisibility}
               fields={fields} setFields={setFields}
+              workspaceId={workspace}
+              channelMode={channelMode} setChannelMode={setChannelMode}
+              existingChannelId={existingChannelId} setExistingChannelId={setExistingChannelId}
             />
           )}
           {step === 3 && deviceRef.current && (

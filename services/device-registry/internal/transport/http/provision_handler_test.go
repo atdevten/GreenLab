@@ -179,6 +179,76 @@ func TestProvisionHandler_MissingChannelName(t *testing.T) {
 	svc.AssertNotCalled(t, "Provision")
 }
 
+func TestProvisionHandler_NeitherChannelNorChannelID(t *testing.T) {
+	svc := &mockProvisionService{}
+	req := validProvisionRequest()
+	delete(req, "channel") // no channel object and no channel_id
+
+	w := postProvision(newProvisionRouter(svc), req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	svc.AssertNotCalled(t, "Provision")
+}
+
+func TestProvisionHandler_BothChannelAndChannelID(t *testing.T) {
+	svc := &mockProvisionService{}
+	req := validProvisionRequest() // already has "channel"
+	req["channel_id"] = uuid.New().String()
+
+	w := postProvision(newProvisionRouter(svc), req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	svc.AssertNotCalled(t, "Provision")
+}
+
+func TestProvisionHandler_ExistingChannelID_HappyPath(t *testing.T) {
+	svc := &mockProvisionService{}
+	result := makeProvisionResult()
+
+	svc.On("Provision", mock.Anything, mock.AnythingOfType("application.ProvisionInput")).
+		Return(result, nil)
+
+	req := map[string]any{
+		"device": map[string]any{
+			"workspace_id": uuid.New().String(),
+			"name":         "Sensor Node",
+			"description":  "outdoor node",
+		},
+		"channel_id": result.Channel.ID.String(),
+		"fields": []map[string]any{
+			{"name": "temperature", "label": "Temperature", "unit": "°C", "field_type": "float", "position": 1},
+		},
+	}
+
+	w := postProvision(newProvisionRouter(svc), req)
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	data := resp["data"].(map[string]any)
+	assert.Equal(t, result.Channel.ID.String(), data["channel"].(map[string]any)["id"])
+
+	// Verify ExistingChannelID was forwarded to the service.
+	capturedIn := svc.Calls[0].Arguments.Get(1).(application.ProvisionInput)
+	assert.Equal(t, result.Channel.ID.String(), capturedIn.ExistingChannelID)
+	assert.Empty(t, capturedIn.Channel.Name)
+
+	svc.AssertExpectations(t)
+}
+
+func TestProvisionHandler_ExistingChannel_NotFound(t *testing.T) {
+	svc := &mockProvisionService{}
+	svc.On("Provision", mock.Anything, mock.AnythingOfType("application.ProvisionInput")).
+		Return(nil, channel.ErrChannelNotFound)
+
+	req := map[string]any{
+		"device":     map[string]any{"workspace_id": uuid.New().String(), "name": "Node"},
+		"channel_id": uuid.New().String(),
+	}
+
+	w := postProvision(newProvisionRouter(svc), req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	svc.AssertExpectations(t)
+}
+
 func TestProvisionHandler_ServiceReturnsDeviceValidationError(t *testing.T) {
 	svc := &mockProvisionService{}
 	svc.On("Provision", mock.Anything, mock.AnythingOfType("application.ProvisionInput")).
@@ -239,6 +309,7 @@ func TestMapProvisionError(t *testing.T) {
 		{"device invalid status", device.ErrInvalidStatus, http.StatusBadRequest},
 		{"channel invalid name", channel.ErrInvalidName, http.StatusBadRequest},
 		{"channel invalid visibility", channel.ErrInvalidVisibility, http.StatusBadRequest},
+		{"channel not found", channel.ErrChannelNotFound, http.StatusBadRequest},
 		{"field invalid name", field.ErrInvalidName, http.StatusBadRequest},
 		{"field invalid position", field.ErrInvalidPosition, http.StatusBadRequest},
 		{"field invalid type", field.ErrInvalidFieldType, http.StatusBadRequest},

@@ -34,6 +34,8 @@ func mapProvisionError(err error) error {
 		return apierr.BadRequest(err.Error())
 	case errors.Is(err, channel.ErrInvalidName), errors.Is(err, channel.ErrInvalidVisibility):
 		return apierr.BadRequest(err.Error())
+	case errors.Is(err, channel.ErrChannelNotFound):
+		return apierr.NotFound("channel")
 	case errors.Is(err, field.ErrInvalidName), errors.Is(err, field.ErrInvalidPosition), errors.Is(err, field.ErrInvalidFieldType):
 		return apierr.BadRequest(err.Error())
 	default:
@@ -62,6 +64,12 @@ func (h *ProvisionHandler) Provision(c *gin.Context) {
 		return
 	}
 
+	// Exactly one of channel or channel_id must be provided.
+	if (req.Channel == nil) == (req.ChannelID == nil) {
+		response.Error(c, apierr.BadRequest("provide either 'channel' or 'channel_id', not both"))
+		return
+	}
+
 	fields := make([]application.ProvisionFieldInput, len(req.Fields))
 	for i, f := range req.Fields {
 		fields[i] = application.ProvisionFieldInput{
@@ -73,19 +81,26 @@ func (h *ProvisionHandler) Provision(c *gin.Context) {
 		}
 	}
 
-	result, err := h.svc.Provision(c.Request.Context(), application.ProvisionInput{
+	in := application.ProvisionInput{
 		Device: application.ProvisionDeviceInput{
 			WorkspaceID: req.Device.WorkspaceID,
 			Name:        req.Device.Name,
 			Description: req.Device.Description,
 		},
-		Channel: application.ProvisionChannelInput{
+		Fields: fields,
+	}
+
+	if req.ChannelID != nil {
+		in.ExistingChannelID = *req.ChannelID
+	} else {
+		in.Channel = application.ProvisionChannelInput{
 			Name:        req.Channel.Name,
 			Description: req.Channel.Description,
 			Visibility:  req.Channel.Visibility,
-		},
-		Fields: fields,
-	})
+		}
+	}
+
+	result, err := h.svc.Provision(c.Request.Context(), in)
 	if err != nil {
 		response.Error(c, mapProvisionError(err))
 		return

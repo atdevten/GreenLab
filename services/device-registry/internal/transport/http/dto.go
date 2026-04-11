@@ -27,9 +27,10 @@ type ProvisionFieldRequest struct {
 }
 
 type ProvisionRequest struct {
-	Device  ProvisionDeviceRequest  `json:"device"   validate:"required"`
-	Channel ProvisionChannelRequest `json:"channel"  validate:"required"`
-	Fields  []ProvisionFieldRequest `json:"fields"`
+	Device    ProvisionDeviceRequest   `json:"device"      validate:"required"`
+	Channel   *ProvisionChannelRequest `json:"channel"`    // provide to create a new channel
+	ChannelID *string                  `json:"channel_id"` // provide to use an existing channel
+	Fields    []ProvisionFieldRequest  `json:"fields"`
 }
 
 type ProvisionResponse struct {

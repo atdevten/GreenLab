@@ -25,11 +25,18 @@ type TxRepos struct {
 	Fields   field.FieldRepository
 }
 
+// channelLookup is the read-only channel accessor needed by the provision flow
+// when linking a device to an existing channel.
+type channelLookup interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*channel.Channel, error)
+}
+
 // ProvisionInput carries all data needed to atomically create a device + channel + fields.
 type ProvisionInput struct {
-	Device  ProvisionDeviceInput
-	Channel ProvisionChannelInput
-	Fields  []ProvisionFieldInput
+	Device           ProvisionDeviceInput
+	Channel          ProvisionChannelInput
+	ExistingChannelID string // when non-empty, link to this channel instead of creating one
+	Fields           []ProvisionFieldInput
 }
 
 // ProvisionDeviceInput is the device portion of a provision request.
@@ -64,45 +71,51 @@ type ProvisionResult struct {
 
 // ProvisionService orchestrates atomic device + channel + field creation.
 type ProvisionService struct {
-	tx     TxRunner
-	cache  device.DeviceCacheRepository
-	logger *slog.Logger
+	tx       TxRunner
+	channels channelLookup
+	cache    device.DeviceCacheRepository
+	logger   *slog.Logger
 }
 
 // NewProvisionService constructs a ProvisionService.
-func NewProvisionService(tx TxRunner, cache device.DeviceCacheRepository, logger *slog.Logger) *ProvisionService {
-	return &ProvisionService{tx: tx, cache: cache, logger: logger}
+func NewProvisionService(tx TxRunner, channels channelLookup, cache device.DeviceCacheRepository, logger *slog.Logger) *ProvisionService {
+	return &ProvisionService{tx: tx, channels: channels, cache: cache, logger: logger}
 }
 
-// Provision creates a device, a channel linked to that device, and all supplied fields
-// atomically inside a single Postgres transaction.
+// Provision atomically creates a device, links it to a channel (new or existing), and
+// creates the supplied fields. When ExistingChannelID is set the identified channel is
+// fetched, its device_id is updated inside the transaction, and no new channel row is
+// inserted. When ExistingChannelID is empty a new channel is created (original behaviour).
 func (s *ProvisionService) Provision(ctx context.Context, in ProvisionInput) (*ProvisionResult, error) {
 	wsID, err := uuid.Parse(in.Device.WorkspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("Provision.ParseWorkspaceID: %w", err)
 	}
 
-	// Build domain objects before entering the transaction so validation errors
-	// are returned before any DB round-trip.
+	// Build the device domain object before entering the transaction so validation
+	// errors are returned without any DB round-trip.
 	d, err := device.NewDevice(wsID, in.Device.Name, in.Device.Description)
 	if err != nil {
 		return nil, fmt.Errorf("Provision.NewDevice: %w", err)
 	}
 
+	if in.ExistingChannelID != "" {
+		return s.provisionWithExistingChannel(ctx, in, wsID, d)
+	}
+	return s.provisionWithNewChannel(ctx, in, wsID, d)
+}
+
+// provisionWithNewChannel is the original path: create device + new channel + fields atomically.
+func (s *ProvisionService) provisionWithNewChannel(ctx context.Context, in ProvisionInput, wsID uuid.UUID, d *device.Device) (*ProvisionResult, error) {
 	ch, err := channel.NewChannel(wsID, in.Channel.Name, in.Channel.Description, channel.ChannelVisibility(in.Channel.Visibility))
 	if err != nil {
 		return nil, fmt.Errorf("Provision.NewChannel: %w", err)
 	}
 	ch.SetDevice(d.ID)
 
-	// Fields are optional; a device+channel can be provisioned without any fields.
-	fields := make([]*field.Field, 0, len(in.Fields))
-	for i, fi := range in.Fields {
-		f, err := field.NewField(ch.ID, fi.Name, fi.Label, fi.Unit, field.FieldType(fi.FieldType), fi.Position)
-		if err != nil {
-			return nil, fmt.Errorf("Provision.NewField[%d]: %w", i, err)
-		}
-		fields = append(fields, f)
+	fields, err := buildFields(ch.ID, in.Fields)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := s.tx.RunInTx(ctx, func(ctx context.Context, repos TxRepos) error {
@@ -128,4 +141,67 @@ func (s *ProvisionService) Provision(ctx context.Context, in ProvisionInput) (*P
 	}
 
 	return &ProvisionResult{Device: d, Channel: ch, Fields: fields}, nil
+}
+
+// provisionWithExistingChannel links the new device to a channel that already exists.
+// The channel's device_id is updated transactionally.
+func (s *ProvisionService) provisionWithExistingChannel(ctx context.Context, in ProvisionInput, wsID uuid.UUID, d *device.Device) (*ProvisionResult, error) {
+	chID, err := uuid.Parse(in.ExistingChannelID)
+	if err != nil {
+		return nil, fmt.Errorf("Provision.ParseChannelID: %w", err)
+	}
+
+	// Fetch and validate the channel existence before entering the transaction.
+	ch, err := s.channels.GetByID(ctx, chID)
+	if err != nil {
+		return nil, fmt.Errorf("Provision.GetChannel: %w", err)
+	}
+
+	// Verify the channel belongs to the same workspace as the device being provisioned.
+	if ch.WorkspaceID != wsID {
+		return nil, fmt.Errorf("Provision: channel does not belong to workspace: %w", channel.ErrChannelNotFound)
+	}
+
+	fields, err := buildFields(ch.ID, in.Fields)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.tx.RunInTx(ctx, func(ctx context.Context, repos TxRepos) error {
+		if err := repos.Devices.Create(ctx, d); err != nil {
+			return fmt.Errorf("tx.Devices.Create: %w", err)
+		}
+		ch.SetDevice(d.ID)
+		if err := repos.Channels.Update(ctx, ch); err != nil {
+			return fmt.Errorf("tx.Channels.Update: %w", err)
+		}
+		for _, f := range fields {
+			if err := repos.Fields.Create(ctx, f); err != nil {
+				return fmt.Errorf("tx.Fields.Create: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("Provision.RunInTx: %w", err)
+	}
+
+	// Best-effort cache warm; never fail the provision on cache errors.
+	if err := s.cache.SetDevice(ctx, d); err != nil {
+		s.logger.Error("provision: failed to cache device", "device_id", d.ID, "error", err)
+	}
+
+	return &ProvisionResult{Device: d, Channel: ch, Fields: fields}, nil
+}
+
+// buildFields constructs validated field domain objects for the given channel.
+func buildFields(channelID uuid.UUID, inputs []ProvisionFieldInput) ([]*field.Field, error) {
+	fields := make([]*field.Field, 0, len(inputs))
+	for i, fi := range inputs {
+		f, err := field.NewField(channelID, fi.Name, fi.Label, fi.Unit, field.FieldType(fi.FieldType), fi.Position)
+		if err != nil {
+			return nil, fmt.Errorf("Provision.NewField[%d]: %w", i, err)
+		}
+		fields = append(fields, f)
+	}
+	return fields, nil
 }

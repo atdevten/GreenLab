@@ -15,6 +15,7 @@ import { channelsApi } from '../api/channels'
 import { fieldsApi } from '../api/fields'
 import { queryApi } from '../api/query'
 import { workspacesApi } from '../api/workspaces'
+import { provisionApi } from '../api/provision'
 import type { Device as ApiDevice, Workspace, QueryResponse } from '../types'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip)
@@ -827,28 +828,47 @@ export function DevicesPage() {
 
   async function handleRegister(nd: NewDevice): Promise<{ channelId: string; apiKey: string }> {
     try {
-      const devRes = await devicesApi.create({
-        name: nd.name,
-        workspace_id: nd.workspace || activeWsId,
-        description: nd.description,
-        tags: nd.tags ? nd.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
-        icon: nd.icon,
-        lat: nd.lat ? (v => Number.isFinite(v) ? v : undefined)(parseFloat(nd.lat)) : undefined,
-        lng: nd.lng ? (v => Number.isFinite(v) ? v : undefined)(parseFloat(nd.lng)) : undefined,
-        location_address: nd.locationLabel || undefined,
-        channel_name: nd.channelName,
-        channel_visibility: nd.visibility,
-      })
-      const channelId = devRes.data.channel.id
-      const apiKey = devRes.data.device.api_key ?? nd.apiKey
+      let channelId: string
+      let apiKey: string
 
-      await Promise.all(
-        nd.fields.map((f, i) =>
-          fieldsApi.create({ channel_id: channelId, name: f.key || f.name, label: f.name, unit: f.unit, field_type: f.type, position: i + 1 })
+      if (nd.existingChannelId) {
+        // Link device to existing channel via provision endpoint
+        const res = await provisionApi.provision({
+          device: {
+            workspace_id: nd.workspace || activeWsId,
+            name: nd.name,
+            description: nd.description || undefined,
+          },
+          channel_id: nd.existingChannelId,
+        })
+        channelId = res.data.channel.id
+        apiKey = res.data.device.api_key ?? nd.apiKey
+        setDevices(prev => [apiDeviceToLocal(res.data.device), ...prev])
+      } else {
+        // Original flow: create device + new channel, then create fields
+        const devRes = await devicesApi.create({
+          name: nd.name,
+          workspace_id: nd.workspace || activeWsId,
+          description: nd.description,
+          tags: nd.tags ? nd.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+          icon: nd.icon,
+          lat: nd.lat ? (v => Number.isFinite(v) ? v : undefined)(parseFloat(nd.lat)) : undefined,
+          lng: nd.lng ? (v => Number.isFinite(v) ? v : undefined)(parseFloat(nd.lng)) : undefined,
+          location_address: nd.locationLabel || undefined,
+          channel_name: nd.channelName,
+          channel_visibility: nd.visibility,
+        })
+        channelId = devRes.data.channel.id
+        apiKey = devRes.data.device.api_key ?? nd.apiKey
+
+        await Promise.all(
+          nd.fields.map((f, i) =>
+            fieldsApi.create({ channel_id: channelId, name: f.key || f.name, label: f.name, unit: f.unit, field_type: f.type, position: i + 1 })
+          )
         )
-      )
+        setDevices(prev => [apiDeviceToLocal(devRes.data.device), ...prev])
+      }
 
-      setDevices(prev => [apiDeviceToLocal(devRes.data.device), ...prev])
       toast(`Device "${nd.name}" registered`)
       return { channelId, apiKey }
     } catch {
