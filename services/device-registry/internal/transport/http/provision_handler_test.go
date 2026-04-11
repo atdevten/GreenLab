@@ -245,7 +245,7 @@ func TestProvisionHandler_ExistingChannel_NotFound(t *testing.T) {
 	}
 
 	w := postProvision(newProvisionRouter(svc), req)
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, http.StatusNotFound, w.Code)
 	svc.AssertExpectations(t)
 }
 
