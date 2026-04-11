@@ -9,4 +9,6 @@ export const authApi = {
   updateMe: (data: { first_name?: string; last_name?: string }) => client.put<User>('/api/v1/auth/me', data),
   changePassword: (data: { current_password: string; new_password: string }) => client.put('/api/v1/auth/me/password', data),
   forgotPassword: (email: string) => client.post('/api/v1/auth/forgot-password', { email }),
+  resetPassword: (data: { token: string; new_password: string }) => client.post('/api/v1/auth/reset-password', data),
+  verifyEmail: (token: string) => client.post('/api/v1/auth/verify-email', { token }),
 }

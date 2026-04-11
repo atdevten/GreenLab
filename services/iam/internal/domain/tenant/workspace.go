@@ -13,6 +13,7 @@ type Workspace struct {
 	Name        string
 	Slug        string
 	Description string
+	MemberCount int
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }

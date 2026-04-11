@@ -26,11 +26,11 @@ export interface UpdateDeviceRequest { name?: string; description?: string; tags
 export interface CreateDeviceResponse { device: Device; channel: Channel }
 
 export interface Channel { id: string; device_id: string; name: string; visibility: 'public' | 'private'; tags?: string[]; fields: FieldDef[]; last_reading?: string; reads_24h: number; updated_at: string }
-export interface FieldDef { id?: string; key: string; name: string; unit?: string; type: 'float' | 'integer' | 'string' | 'boolean'; color?: string; enabled?: boolean }
+export interface FieldDef { id?: string; name: string; label?: string; unit?: string; field_type: 'float' | 'integer' | 'string' | 'boolean'; color?: string; enabled?: boolean }
 export interface CreateChannelRequest { workspace_id: string; device_id?: string; name: string; description?: string; visibility: 'public' | 'private' }
 export interface CreateFieldRequest { channel_id: string; name: string; label?: string; unit?: string; field_type: 'float' | 'integer' | 'string' | 'boolean'; position: number; description?: string }
 
-export interface Field { id: string; channel_id: string; key: string; name: string; unit?: string; type: 'float' | 'integer' | 'string' | 'boolean' }
+export interface Field { id: string; channel_id: string; name: string; label?: string; unit?: string; field_type: 'float' | 'integer' | 'string' | 'boolean' }
 
 export type Severity = 'critical' | 'warning' | 'info'
 export type Operator = '>' | '>=' | '<' | '<=' | '==' | '!='
@@ -49,3 +49,5 @@ export interface DashboardStats { active_devices: number; readings_24h: number; 
 export interface AuditEvent { id: string; user_id: string; user_name: string; action: string; resource_type: string; resource_id: string; target: string; ip: string; created_at: string }
 
 export interface ApiKey { id: string; tenant_id?: string; user_id?: string; name: string; key_prefix: string; scopes: string[]; created_at: string; last_used?: string }
+
+export interface WorkspaceApiKey { id: string; workspace_id: string; name: string; scope: 'read' | 'write'; key_prefix: string; created_at: string; last_used_at?: string }

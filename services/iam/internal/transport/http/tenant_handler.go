@@ -526,7 +526,8 @@ func toOrgResponse(o *tenant.Org) *OrgResponse {
 func toWorkspaceResponse(w *tenant.Workspace) *WorkspaceResponse {
 	return &WorkspaceResponse{
 		ID: w.ID.String(), OrgID: w.OrgID.String(), Name: w.Name,
-		Slug: w.Slug, Description: w.Description, CreatedAt: w.CreatedAt,
+		Slug: w.Slug, Description: w.Description, MemberCount: w.MemberCount,
+		CreatedAt: w.CreatedAt,
 	}
 }
 

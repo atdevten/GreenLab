@@ -15,6 +15,8 @@ import { AuditLogPage }      from './pages/AuditLogPage'
 import { SettingsPage }      from './pages/SettingsPage'
 import LoginPage             from './pages/LoginPage'
 import SignupPage            from './pages/SignupPage'
+import ResetPasswordPage     from './pages/ResetPasswordPage'
+import VerifyEmailPage       from './pages/VerifyEmailPage'
 import { useAuth }           from './contexts/AuthContext'
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -77,6 +79,8 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/verify-email" element={<VerifyEmailPage />} />
       <Route path="/*" element={
         <ProtectedRoute>
           <AppShell />

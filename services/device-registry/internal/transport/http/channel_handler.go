@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/gin-gonic/gin"
@@ -69,6 +70,7 @@ func (h *ChannelHandler) CreateChannel(c *gin.Context) {
 		Name:          req.Name,
 		Description:   req.Description,
 		Visibility:    req.Visibility,
+		Tags:          req.Tags,
 		RetentionDays: req.RetentionDays,
 	})
 	if err != nil {
@@ -163,7 +165,7 @@ func (h *ChannelHandler) UpdateChannel(c *gin.Context) {
 	}
 	ch, err := h.svc.UpdateChannel(c.Request.Context(), c.Param("id"), application.UpdateChannelInput{
 		Name: req.Name, Description: req.Description, Visibility: req.Visibility,
-		RetentionDays: req.RetentionDays,
+		Tags: req.Tags, RetentionDays: req.RetentionDays,
 	})
 	if err != nil {
 		response.Error(c, mapChannelError(err))
@@ -189,6 +191,10 @@ func (h *ChannelHandler) DeleteChannel(c *gin.Context) {
 }
 
 func toChannelResponse(ch *channel.Channel) *ChannelResponse {
+	tags := []string{}
+	if len(ch.Tags) > 0 {
+		_ = json.Unmarshal(ch.Tags, &tags)
+	}
 	r := &ChannelResponse{
 		ID:            ch.ID.String(),
 		ShortID:       ch.ShortID,
@@ -196,6 +202,7 @@ func toChannelResponse(ch *channel.Channel) *ChannelResponse {
 		Name:          ch.Name,
 		Description:   ch.Description,
 		Visibility:    string(ch.Visibility),
+		Tags:          tags,
 		RetentionDays: ch.RetentionDays,
 		CreatedAt:     ch.CreatedAt,
 		UpdatedAt:     ch.UpdatedAt,

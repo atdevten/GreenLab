@@ -116,6 +116,40 @@ func TestCreateChannel(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, ch)
 	})
+
+	t.Run("tags are JSON-encoded on channel", func(t *testing.T) {
+		svc, repo, retention := newTestChannelService(t)
+		wsID := uuid.New()
+		repo.On("Create", ctx, mock.AnythingOfType("*channel.Channel")).Return(nil)
+		retention.On("SetRetention", ctx, mock.AnythingOfType("string"), channel.DefaultRetentionDays).Return(nil)
+
+		ch, err := svc.CreateChannel(ctx, CreateChannelInput{
+			WorkspaceID: wsID.String(),
+			Name:        "Tagged",
+			Tags:        []string{"env:prod", "region:us"},
+		})
+		require.NoError(t, err)
+		assert.JSONEq(t, `["env:prod","region:us"]`, string(ch.Tags))
+		repo.AssertExpectations(t)
+		retention.AssertExpectations(t)
+	})
+
+	t.Run("empty tags leaves default Tags unchanged", func(t *testing.T) {
+		svc, repo, retention := newTestChannelService(t)
+		wsID := uuid.New()
+		repo.On("Create", ctx, mock.AnythingOfType("*channel.Channel")).Return(nil)
+		retention.On("SetRetention", ctx, mock.AnythingOfType("string"), channel.DefaultRetentionDays).Return(nil)
+
+		ch, err := svc.CreateChannel(ctx, CreateChannelInput{
+			WorkspaceID: wsID.String(),
+			Name:        "No Tags",
+		})
+		require.NoError(t, err)
+		// NewChannel sets Tags to []byte("[]")
+		assert.Equal(t, []byte("[]"), ch.Tags)
+		repo.AssertExpectations(t)
+		retention.AssertExpectations(t)
+	})
 }
 
 func TestGetChannel(t *testing.T) {
@@ -224,6 +258,38 @@ func TestUpdateChannel(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, ch)
 		repo.AssertExpectations(t)
+	})
+
+	t.Run("update tags are JSON-encoded on channel", func(t *testing.T) {
+		svc, repo, retention := newTestChannelService(t)
+		id := uuid.New()
+		existing := &channel.Channel{ID: id, Name: "Old", Visibility: channel.ChannelVisibilityPrivate, RetentionDays: 90, Tags: []byte("[]")}
+		repo.On("GetByID", ctx, id).Return(existing, nil)
+		repo.On("Update", ctx, mock.AnythingOfType("*channel.Channel")).Return(nil)
+		retention.On("SetRetention", ctx, id.String(), 90).Return(nil)
+
+		ch, err := svc.UpdateChannel(ctx, id.String(), UpdateChannelInput{Tags: []string{"a", "b"}})
+		require.NoError(t, err)
+		assert.JSONEq(t, `["a","b"]`, string(ch.Tags))
+		repo.AssertExpectations(t)
+		retention.AssertExpectations(t)
+	})
+
+	t.Run("nil tags leaves existing tags unchanged", func(t *testing.T) {
+		svc, repo, retention := newTestChannelService(t)
+		id := uuid.New()
+		existingTags := []byte(`["keep"]`)
+		existing := &channel.Channel{ID: id, Name: "Old", Visibility: channel.ChannelVisibilityPrivate, RetentionDays: 90, Tags: existingTags}
+		repo.On("GetByID", ctx, id).Return(existing, nil)
+		repo.On("Update", ctx, mock.AnythingOfType("*channel.Channel")).Return(nil)
+		retention.On("SetRetention", ctx, id.String(), 90).Return(nil)
+
+		// Tags is nil (not set in input) — existing tags must be preserved
+		ch, err := svc.UpdateChannel(ctx, id.String(), UpdateChannelInput{Name: "Updated"})
+		require.NoError(t, err)
+		assert.Equal(t, existingTags, ch.Tags)
+		repo.AssertExpectations(t)
+		retention.AssertExpectations(t)
 	})
 }
 

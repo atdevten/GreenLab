@@ -141,8 +141,8 @@ func (r *ChannelRepo) ListByDevice(ctx context.Context, deviceID uuid.UUID, limi
 
 func (r *ChannelRepo) Update(ctx context.Context, ch *channel.Channel) error {
 	_, err := r.db.ExecContext(ctx, `
-		UPDATE channels SET name=$1, description=$2, visibility=$3, updated_at=NOW() WHERE id=$4`,
-		ch.Name, ch.Description, ch.Visibility, ch.ID)
+		UPDATE channels SET name=$1, description=$2, visibility=$3, tags=$4, updated_at=NOW() WHERE id=$5`,
+		ch.Name, ch.Description, ch.Visibility, ch.Tags, ch.ID)
 	if err != nil {
 		return fmt.Errorf("ChannelRepo.Update: %w", err)
 	}
