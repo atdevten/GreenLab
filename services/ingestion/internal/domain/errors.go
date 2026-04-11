@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	ErrInvalidChannelID = errors.New("channel_id must be a positive integer")
+	ErrInvalidChannelID = errors.New("channel_id must be a valid UUID")
 	ErrEmptyFields      = errors.New("fields must not be empty")
 	ErrCacheMiss        = errors.New("cache miss")
 	ErrDeviceNotFound   = errors.New("device not found")

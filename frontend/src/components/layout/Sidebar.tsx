@@ -20,8 +20,8 @@ const sections: { label: string; items: NavItem[] }[] = [
   {
     label: 'Infrastructure',
     items: [
-      { icon: '🗂️', label: 'Workspaces', page: 'workspaces', badge: 3, badgeColor: 'green' },
-      { icon: '🔌', label: 'Devices', page: 'devices', badge: 12, badgeColor: 'green' },
+      { icon: '🗂️', label: 'Workspaces', page: 'workspaces' },
+      { icon: '🔌', label: 'Devices', page: 'devices' },
       { icon: '📊', label: 'Channels', page: 'channels' },
     ],
   },
@@ -35,7 +35,7 @@ const sections: { label: string; items: NavItem[] }[] = [
   {
     label: 'Alerts',
     items: [
-      { icon: '🔔', label: 'Alert Rules', page: 'alerts', badge: 3, badgeColor: 'red' },
+      { icon: '🔔', label: 'Alert Rules', page: 'alerts' },
       { icon: '📬', label: 'Notifications', page: 'notifications' },
     ],
   },

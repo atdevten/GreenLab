@@ -8,44 +8,48 @@ import (
 )
 
 func TestValidateChannelID(t *testing.T) {
-	t.Run("valid integer string returns nil", func(t *testing.T) {
-		assert.NoError(t, ValidateChannelID("42"))
+	t.Run("valid lowercase UUID returns nil", func(t *testing.T) {
+		assert.NoError(t, ValidateChannelID("550e8400-e29b-41d4-a716-446655440000"))
 	})
 
-	t.Run("valid large integer returns nil", func(t *testing.T) {
-		assert.NoError(t, ValidateChannelID("1000000"))
+	t.Run("valid uppercase UUID returns nil", func(t *testing.T) {
+		assert.NoError(t, ValidateChannelID("550E8400-E29B-41D4-A716-446655440000"))
 	})
 
-	t.Run("zero returns ErrInvalidChannelID", func(t *testing.T) {
-		assert.ErrorIs(t, ValidateChannelID("0"), ErrInvalidChannelID)
-	})
-
-	t.Run("negative string returns ErrInvalidChannelID", func(t *testing.T) {
-		assert.ErrorIs(t, ValidateChannelID("-1"), ErrInvalidChannelID)
-	})
-
-	t.Run("non-numeric string returns ErrInvalidChannelID", func(t *testing.T) {
-		assert.ErrorIs(t, ValidateChannelID("not-a-number"), ErrInvalidChannelID)
-	})
-
-	t.Run("UUID string returns ErrInvalidChannelID", func(t *testing.T) {
-		assert.ErrorIs(t, ValidateChannelID("550e8400-e29b-41d4-a716-446655440000"), ErrInvalidChannelID)
+	t.Run("valid mixed-case UUID returns nil", func(t *testing.T) {
+		assert.NoError(t, ValidateChannelID("6178c902-94de-4b1b-bea4-44d3cde53a30"))
 	})
 
 	t.Run("empty string returns ErrInvalidChannelID", func(t *testing.T) {
 		assert.ErrorIs(t, ValidateChannelID(""), ErrInvalidChannelID)
 	})
 
-	t.Run("integer with leading spaces returns ErrInvalidChannelID", func(t *testing.T) {
-		assert.ErrorIs(t, ValidateChannelID(" 42"), ErrInvalidChannelID)
+	t.Run("plain integer returns ErrInvalidChannelID", func(t *testing.T) {
+		assert.ErrorIs(t, ValidateChannelID("42"), ErrInvalidChannelID)
 	})
 
-	t.Run("max int32 is valid", func(t *testing.T) {
-		assert.NoError(t, ValidateChannelID("2147483647"))
+	t.Run("non-UUID string returns ErrInvalidChannelID", func(t *testing.T) {
+		assert.ErrorIs(t, ValidateChannelID("not-a-uuid"), ErrInvalidChannelID)
 	})
 
-	t.Run("value exceeding int32 max returns ErrInvalidChannelID", func(t *testing.T) {
-		assert.ErrorIs(t, ValidateChannelID("2147483648"), ErrInvalidChannelID)
+	t.Run("UUID with extra leading character returns ErrInvalidChannelID", func(t *testing.T) {
+		assert.ErrorIs(t, ValidateChannelID("26178c902-94de-4b1b-bea4-44d3cde53a30"), ErrInvalidChannelID)
+	})
+
+	t.Run("UUID missing a segment returns ErrInvalidChannelID", func(t *testing.T) {
+		assert.ErrorIs(t, ValidateChannelID("550e8400-e29b-41d4-a716"), ErrInvalidChannelID)
+	})
+
+	t.Run("UUID with whitespace returns ErrInvalidChannelID", func(t *testing.T) {
+		assert.ErrorIs(t, ValidateChannelID(" 550e8400-e29b-41d4-a716-446655440000"), ErrInvalidChannelID)
+	})
+
+	t.Run("nil UUID returns ErrInvalidChannelID", func(t *testing.T) {
+		assert.ErrorIs(t, ValidateChannelID("00000000-0000-0000-0000-000000000000"), ErrInvalidChannelID)
+	})
+
+	t.Run("UUID without hyphens returns ErrInvalidChannelID", func(t *testing.T) {
+		assert.ErrorIs(t, ValidateChannelID("550e8400e29b41d4a716446655440000"), ErrInvalidChannelID)
 	})
 }
 
