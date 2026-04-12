@@ -316,11 +316,12 @@ All 4 active deserializers shipped: OJson, MsgPack, Binary, JSON. Protobuf stub 
 
 ---
 
-### [TODO-032] Redis ACK storage schema for schema_version OTA tracking
+### ~~[TODO-032] Redis ACK storage schema for schema_version OTA tracking~~ ✅ DONE (v0.1.1.0 — 2026-04-12)
 **What:** Design and implement Redis key structure for per-device schema_version acknowledgement tracking. Key: `schema_ack:{channel_id}:{device_id}`, value: `uint32` (highest ACK'd version), TTL: 30 days. Implement 80% active-device threshold logic (active = request in last 7 days, count key: `schema_active:{channel_id}:{window}`). Implement 14-day force-deprecation path: operator endpoint `POST /v1/channels/{id}/schema/force-deprecate` sets old version to return 410. Devices have 48h to fetch new version (tracked in `schema_stuck:{channel_id}:{device_id}`). Add cleanup job for expired ACK keys.
 **Why:** Without this, TODO-028's safe OTA rollout guarantee (≥80% ACK before format recommendation changes) cannot be enforced. The 14-day force-deprecation path prevents "stuck" devices from blocking schema evolution indefinitely.
 **Context:** CEO plan flagged this as unresolved feasibility concern #1. The ACK mechanism is simple (one Redis SET per request with schema_version); the 80% threshold logic and force-deprecation operator path are the complex parts.
 **Effort:** M human / S CC+gstack | **Priority:** P2 | **Depends on:** TODO-028
+**Completed:** v0.1.1.0 (2026-04-12)
 
 ---
 
