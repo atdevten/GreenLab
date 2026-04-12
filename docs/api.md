@@ -480,6 +480,7 @@ Each entry in `readings` accepts the same fields as the single-reading JSON body
 | 400 | `timestamp_too_old` / `timestamp_future` | Timestamp outside acceptable window |
 | 403 | `device_id_mismatch` | Binary DEVID doesn't match authenticated device |
 | 409 | `schema_version_mismatch` | `sv` doesn't match current channel schema version |
+| 410 | `schema_force_deprecated` | Channel schema has been force-deprecated; device must fetch the latest schema and update firmware |
 | 413 | `payload_too_large` | Body exceeds format limit |
 | 415 | `unsupported_media_type` | Unknown `Content-Type` |
 | 503 | `service_unavailable` | Kafka publish failed |
