@@ -40,10 +40,12 @@ type ingestService interface {
 	IngestReplay(ctx context.Context, inputs []application.IngestInput, windowDays int, dlq application.ReplayDLQWriter) error
 }
 
-// schemaACKStore records per-device schema version acknowledgements.
-// A nil value disables ACK recording (fail-open).
+// schemaACKStore records per-device schema version acknowledgements and enforces
+// force-deprecation. A nil value disables all schema tracking (fail-open).
 type schemaACKStore interface {
 	RecordACK(ctx context.Context, channelID, deviceID string, version uint32) error
+	IsForceDeprecated(ctx context.Context, channelID string) (bool, error)
+	SetStuck(ctx context.Context, channelID, deviceID string) error
 }
 
 type Handler struct {
@@ -170,6 +172,24 @@ func (h *Handler) ingestCompact(c *gin.Context, channelID string, schema domain.
 	for i := range inputs {
 		inputs[i].ChannelID = channelID
 		inputs[i].DeviceID = schema.DeviceID
+	}
+
+	// Enforce force-deprecation: return 410 Gone if the channel schema has been
+	// force-deprecated. On Redis error, fail-open so legitimate traffic is not blocked.
+	if h.ackStore != nil {
+		deprecated, err := h.ackStore.IsForceDeprecated(c.Request.Context(), channelID)
+		if err != nil {
+			h.logger.WarnContext(c.Request.Context(), "force-deprecation check failed",
+				"error", err, "channel_id", channelID)
+		} else if deprecated {
+			if stuckErr := h.ackStore.SetStuck(c.Request.Context(), channelID, schema.DeviceID); stuckErr != nil {
+				h.logger.WarnContext(c.Request.Context(), "schema stuck mark failed",
+					"error", stuckErr, "channel_id", channelID, "device_id", schema.DeviceID)
+			}
+			response.Error(c, apierr.New(http.StatusGone, "schema_force_deprecated",
+				"schema version has been force-deprecated; fetch the latest schema and update your device"))
+			return
+		}
 	}
 
 	if err := h.svc.IngestBatch(c.Request.Context(), inputs); err != nil {
