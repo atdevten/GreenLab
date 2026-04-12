@@ -77,7 +77,7 @@ func (h *SchemaHandler) ForceDeprecateSchema(c *gin.Context) {
 		ChannelID:  channelID,
 		Deprecated: true,
 		ExpiresAt:  expiresAt,
-		Note: "Devices using the deprecated schema_version will receive 410 Gone on compact-format " +
-			"ingestion requests until the deprecation marker expires.",
+		Note: "Compact-format ingestion requests from devices using the old schema_version are rejected " +
+			"with 410 Gone until the deprecation marker expires.",
 	})
 }

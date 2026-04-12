@@ -165,6 +165,25 @@ func (h *Handler) ingestCompact(c *gin.Context, channelID string, schema domain.
 
 	inputs, err := deserializeCompact(body, schema, d, channelID)
 	if err != nil {
+		// Upgrade a schema-version mismatch (409) to 410 Gone when the channel has been
+		// force-deprecated. Devices on the old schema must update their firmware; they should
+		// not retry. On Redis error, fall through to the normal 409 (fail-open).
+		var schemaMismatch *domain.SchemaMismatchError
+		if errors.As(err, &schemaMismatch) && h.ackStore != nil {
+			deprecated, depErr := h.ackStore.IsForceDeprecated(c.Request.Context(), channelID)
+			if depErr != nil {
+				h.logger.WarnContext(c.Request.Context(), "force-deprecation check failed",
+					"error", depErr, "channel_id", channelID)
+			} else if deprecated {
+				if stuckErr := h.ackStore.SetStuck(c.Request.Context(), channelID, schema.DeviceID); stuckErr != nil {
+					h.logger.WarnContext(c.Request.Context(), "schema stuck mark failed",
+						"error", stuckErr, "channel_id", channelID, "device_id", schema.DeviceID)
+				}
+				response.Error(c, apierr.New(http.StatusGone, "schema_force_deprecated",
+					"schema version has been force-deprecated; fetch the latest schema and update your device"))
+				return
+			}
+		}
 		errorToHTTPResponse(c, err, h.logger)
 		return
 	}
@@ -172,24 +191,6 @@ func (h *Handler) ingestCompact(c *gin.Context, channelID string, schema domain.
 	for i := range inputs {
 		inputs[i].ChannelID = channelID
 		inputs[i].DeviceID = schema.DeviceID
-	}
-
-	// Enforce force-deprecation: return 410 Gone if the channel schema has been
-	// force-deprecated. On Redis error, fail-open so legitimate traffic is not blocked.
-	if h.ackStore != nil {
-		deprecated, err := h.ackStore.IsForceDeprecated(c.Request.Context(), channelID)
-		if err != nil {
-			h.logger.WarnContext(c.Request.Context(), "force-deprecation check failed",
-				"error", err, "channel_id", channelID)
-		} else if deprecated {
-			if stuckErr := h.ackStore.SetStuck(c.Request.Context(), channelID, schema.DeviceID); stuckErr != nil {
-				h.logger.WarnContext(c.Request.Context(), "schema stuck mark failed",
-					"error", stuckErr, "channel_id", channelID, "device_id", schema.DeviceID)
-			}
-			response.Error(c, apierr.New(http.StatusGone, "schema_force_deprecated",
-				"schema version has been force-deprecated; fetch the latest schema and update your device"))
-			return
-		}
 	}
 
 	if err := h.svc.IngestBatch(c.Request.Context(), inputs); err != nil {

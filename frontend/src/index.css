@@ -166,6 +166,11 @@ ul { list-style: none; }
 
   /* Full-width buttons */
   .full-sm  { width: 100% !important; }
+
+  /* Page toolbar (search/filter bar) fills full width on mobile */
+  .page-toolbar { width: 100% !important; margin-left: 0 !important; }
+  .page-toolbar input { flex: 1 !important; width: auto !important; min-width: 0 !important; }
+  .page-toolbar select { flex: 1 !important; width: auto !important; min-width: 0 !important; }
 }
 
 @media (min-width: 769px) and (max-width: 1100px) {

@@ -255,13 +255,26 @@ func TestSchemaACKStore_IsForceDeprecated_RedisError(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-// TestSchemaACKStore_SetStuck writes the stuck key with the expected TTL.
+// TestSchemaACKStore_SetStuck uses SetNX so the key is only written once per device.
 func TestSchemaACKStore_SetStuck(t *testing.T) {
 	rdb, mock := redismock.NewClientMock()
 	store := NewSchemaACKStore(rdb)
 	ctx := context.Background()
 
-	mock.ExpectSet("schema_stuck:chan-1:dev-1", "1", schemaStuckTTL).SetVal("OK")
+	mock.ExpectSetNX("schema_stuck:chan-1:dev-1", "1", schemaStuckTTL).SetVal(true)
+
+	err := store.SetStuck(ctx, "chan-1", "dev-1")
+	require.NoError(t, err)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestSchemaACKStore_SetStuck_AlreadyExists is a no-op (SetNX returns false) — not an error.
+func TestSchemaACKStore_SetStuck_AlreadyExists(t *testing.T) {
+	rdb, mock := redismock.NewClientMock()
+	store := NewSchemaACKStore(rdb)
+	ctx := context.Background()
+
+	mock.ExpectSetNX("schema_stuck:chan-1:dev-1", "1", schemaStuckTTL).SetVal(false)
 
 	err := store.SetStuck(ctx, "chan-1", "dev-1")
 	require.NoError(t, err)
@@ -274,7 +287,7 @@ func TestSchemaACKStore_SetStuck_RedisError(t *testing.T) {
 	store := NewSchemaACKStore(rdb)
 	ctx := context.Background()
 
-	mock.ExpectSet("schema_stuck:chan-1:dev-1", "1", schemaStuckTTL).SetErr(fmt.Errorf("connection refused"))
+	mock.ExpectSetNX("schema_stuck:chan-1:dev-1", "1", schemaStuckTTL).SetErr(fmt.Errorf("connection refused"))
 
 	err := store.SetStuck(ctx, "chan-1", "dev-1")
 	require.Error(t, err)

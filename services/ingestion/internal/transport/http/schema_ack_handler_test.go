@@ -60,7 +60,6 @@ func TestHandler_IngestCompact_RecordsACK_OnSuccess(t *testing.T) {
 	r := buildRouterWithACK(h, schema)
 
 	svc.On("IngestBatch", mock.Anything, mock.Anything).Return(nil)
-	ackStore.On("IsForceDeprecated", mock.Anything, "42").Return(false, nil)
 	ackStore.On("RecordACK", mock.Anything, "42", "dev-uuid-1", uint32(3)).Return(nil)
 
 	body := []byte(`{"f":[42.5],"sv":3}`)
@@ -87,7 +86,6 @@ func TestHandler_IngestCompact_ACKStoreError_DoesNotFailRequest(t *testing.T) {
 	r := buildRouterWithACK(h, schema)
 
 	svc.On("IngestBatch", mock.Anything, mock.Anything).Return(nil)
-	ackStore.On("IsForceDeprecated", mock.Anything, "42").Return(false, nil)
 	// ACK store returns an error — request should still succeed (fail-open).
 	ackStore.On("RecordACK", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("redis connection refused"))
@@ -138,7 +136,6 @@ func TestHandler_IngestCompact_ACKNotCalled_OnServiceError(t *testing.T) {
 	h := NewHandler(svc, slog.Default(), ackStore)
 	r := buildRouterWithACK(h, schema)
 
-	ackStore.On("IsForceDeprecated", mock.Anything, "42").Return(false, nil)
 	// IngestBatch fails — ACK must not be recorded.
 	svc.On("IngestBatch", mock.Anything, mock.Anything).Return(errors.New("kafka unavailable"))
 
@@ -166,7 +163,6 @@ func TestHandler_IngestCompact_ACKUsesSchemaVersion(t *testing.T) {
 	r := buildRouterWithACK(h, schema)
 
 	svc.On("IngestBatch", mock.Anything, mock.Anything).Return(nil)
-	ackStore.On("IsForceDeprecated", mock.Anything, "99").Return(false, nil)
 	// Verify schema version 7 is passed to RecordACK, not the payload's "sv" field.
 	ackStore.On("RecordACK", mock.Anything, "99", "dev-uuid-99", uint32(7)).Return(nil)
 
@@ -185,12 +181,17 @@ func TestHandler_IngestCompact_ACKUsesSchemaVersion(t *testing.T) {
 	ackStore.AssertExpectations(t)
 }
 
-func TestHandler_IngestCompact_ForceDeprecated_Returns410(t *testing.T) {
+// Force-deprecation tests: the 410 path is triggered when a device sends an OLD schema
+// version (causing SchemaMismatchError) AND the channel has a force-deprecation marker.
+// Devices already on the current schema version are not affected.
+
+func TestHandler_IngestCompact_ForceDeprecated_OldVersion_Returns410(t *testing.T) {
+	// Channel is on schema version 2; device sends sv:1 (old version).
 	schema := domain.DeviceSchema{
 		DeviceID:      "dev-uuid-1",
 		ChannelID:     "42",
 		Fields:        []domain.FieldEntry{{Index: 1, Name: "temperature", Type: "float"}},
-		SchemaVersion: 1,
+		SchemaVersion: 2,
 	}
 
 	svc := &mockIngestService{}
@@ -203,22 +204,55 @@ func TestHandler_IngestCompact_ForceDeprecated_Returns410(t *testing.T) {
 	ackStore.On("IsForceDeprecated", mock.Anything, "42").Return(true, nil)
 	ackStore.On("SetStuck", mock.Anything, "42", "dev-uuid-1").Return(nil)
 
+	// sv:1 in payload does not match SchemaVersion:2 in auth context → SchemaMismatchError.
 	body := []byte(`{"f":[42.5],"sv":1}`)
 	w := doRequest(r, "POST", "/v1/channels/42/data", body, ctOJSON)
 
 	assert.Equal(t, http.StatusGone, w.Code)
-	// IngestBatch and RecordACK must not be called when force-deprecated.
+	// IngestBatch and RecordACK must not be called.
 	svc.AssertNotCalled(t, "IngestBatch")
 	ackStore.AssertNotCalled(t, "RecordACK")
 	ackStore.AssertExpectations(t)
 }
 
-func TestHandler_IngestCompact_ForceDeprecated_SetStuckError_StillReturns410(t *testing.T) {
+func TestHandler_IngestCompact_ForceDeprecated_CurrentVersion_NotBlocked(t *testing.T) {
+	// Channel is force-deprecated, but this device is already on the current schema (v2).
+	// It must NOT receive 410.
 	schema := domain.DeviceSchema{
 		DeviceID:      "dev-uuid-1",
 		ChannelID:     "42",
 		Fields:        []domain.FieldEntry{{Index: 1, Name: "temperature", Type: "float"}},
-		SchemaVersion: 1,
+		SchemaVersion: 2,
+	}
+
+	svc := &mockIngestService{}
+	ackStore := &mockSchemaACKStore{}
+
+	gin.SetMode(gin.TestMode)
+	h := NewHandler(svc, slog.Default(), ackStore)
+	r := buildRouterWithACK(h, schema)
+
+	// sv:2 in payload matches SchemaVersion:2 — no SchemaMismatchError, force-deprecation
+	// check is never reached.
+	svc.On("IngestBatch", mock.Anything, mock.Anything).Return(nil)
+	ackStore.On("IsForceDeprecated", mock.Anything, mock.Anything).Maybe().Return(false, nil)
+	ackStore.On("RecordACK", mock.Anything, "42", "dev-uuid-1", uint32(2)).Return(nil)
+
+	body := []byte(`{"f":[42.5],"sv":2}`)
+	w := doRequest(r, "POST", "/v1/channels/42/data", body, ctOJSON)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	svc.AssertExpectations(t)
+	ackStore.AssertNotCalled(t, "SetStuck")
+}
+
+func TestHandler_IngestCompact_ForceDeprecated_SetStuckError_StillReturns410(t *testing.T) {
+	// SetStuck fails — 410 should still be returned (fail-open on stuck marking).
+	schema := domain.DeviceSchema{
+		DeviceID:      "dev-uuid-1",
+		ChannelID:     "42",
+		Fields:        []domain.FieldEntry{{Index: 1, Name: "temperature", Type: "float"}},
+		SchemaVersion: 2,
 	}
 
 	svc := &mockIngestService{}
@@ -229,7 +263,6 @@ func TestHandler_IngestCompact_ForceDeprecated_SetStuckError_StillReturns410(t *
 	r := buildRouterWithACK(h, schema)
 
 	ackStore.On("IsForceDeprecated", mock.Anything, "42").Return(true, nil)
-	// SetStuck fails — 410 should still be returned (fail-open on stuck marking).
 	ackStore.On("SetStuck", mock.Anything, "42", "dev-uuid-1").Return(errors.New("redis unavailable"))
 
 	body := []byte(`{"f":[42.5],"sv":1}`)
@@ -241,11 +274,12 @@ func TestHandler_IngestCompact_ForceDeprecated_SetStuckError_StillReturns410(t *
 }
 
 func TestHandler_IngestCompact_ForceDeprecatedCheckError_FailsOpen(t *testing.T) {
+	// IsForceDeprecated returns an error — should fail-open and return normal 409.
 	schema := domain.DeviceSchema{
 		DeviceID:      "dev-uuid-1",
 		ChannelID:     "42",
 		Fields:        []domain.FieldEntry{{Index: 1, Name: "temperature", Type: "float"}},
-		SchemaVersion: 1,
+		SchemaVersion: 2,
 	}
 
 	svc := &mockIngestService{}
@@ -255,16 +289,14 @@ func TestHandler_IngestCompact_ForceDeprecatedCheckError_FailsOpen(t *testing.T)
 	h := NewHandler(svc, slog.Default(), ackStore)
 	r := buildRouterWithACK(h, schema)
 
-	// IsForceDeprecated returns an error — should fail-open and allow ingest to proceed.
 	ackStore.On("IsForceDeprecated", mock.Anything, "42").Return(false, errors.New("redis timeout"))
-	svc.On("IngestBatch", mock.Anything, mock.Anything).Return(nil)
-	ackStore.On("RecordACK", mock.Anything, "42", "dev-uuid-1", uint32(1)).Return(nil)
 
+	// Device sends old sv:1 — schema mismatch, but deprecation check fails open → 409.
 	body := []byte(`{"f":[42.5],"sv":1}`)
 	w := doRequest(r, "POST", "/v1/channels/42/data", body, ctOJSON)
 
-	// Despite IsForceDeprecated error, request proceeds and returns 201.
-	assert.Equal(t, http.StatusCreated, w.Code)
-	svc.AssertExpectations(t)
+	assert.Equal(t, http.StatusConflict, w.Code) // 409, not 410 (fail-open)
+	svc.AssertNotCalled(t, "IngestBatch")
+	ackStore.AssertNotCalled(t, "SetStuck")
 	ackStore.AssertExpectations(t)
 }

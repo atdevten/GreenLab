@@ -13,7 +13,7 @@ import (
 const (
 	schemaACKTTL    = 30 * 24 * time.Hour // 30 days
 	schemaActiveTTL = 7 * 24 * time.Hour  // 7 days
-	schemaStuckTTL  = 48 * time.Hour      // mirrors force-deprecation window
+	schemaStuckTTL  = 48 * time.Hour      // mirrors forceDeprecatedTTL in services/device-registry/internal/infrastructure/redis/schema_deprecation.go
 )
 
 // SchemaACKStore records per-device schema version acknowledgements in Redis.
@@ -164,9 +164,13 @@ func (s *SchemaACKStore) IsForceDeprecated(ctx context.Context, channelID string
 // SetStuck marks deviceID on channelID as stuck — it attempted to ingest during a
 // force-deprecation window without updating its schema. The key expires after 48 hours,
 // matching the force-deprecation window.
+//
+// SetNX semantics: the key is only written on the first call. Subsequent calls from the
+// same device during the same deprecation window are no-ops, preventing write storms on
+// aggressive retry loops and preserving the original TTL.
 func (s *SchemaACKStore) SetStuck(ctx context.Context, channelID, deviceID string) error {
 	key := schemaStuckKey(channelID, deviceID)
-	if err := s.client.Set(ctx, key, "1", schemaStuckTTL).Err(); err != nil {
+	if err := s.client.SetNX(ctx, key, "1", schemaStuckTTL).Err(); err != nil {
 		return fmt.Errorf("SchemaACKStore.SetStuck: %w", err)
 	}
 	return nil
