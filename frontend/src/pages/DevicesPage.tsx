@@ -936,7 +936,7 @@ export function DevicesPage() {
           <h1 style={{ fontSize: 20, fontWeight: 700 }}>Devices</h1>
           <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 2 }}>Manage IoT devices, API keys, and connection status</p>
         </div>
-        <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
+        <div className="page-toolbar" style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
           {workspaces.length > 0 && (
             <select
               value={activeWsId}

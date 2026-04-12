@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1.0] - 2026-04-12
+
+### Added
+
+- **Schema force-deprecation enforcement**: compact-format ingestion requests from devices using an old schema version now receive `410 Gone` instead of `409 Conflict` when an operator has called `POST /api/v1/channels/{id}/schema/force-deprecate`. Devices already on the current schema version are unaffected. The 410 response tells device firmware to stop retrying and fetch the latest schema.
+- **Stuck-device tracking**: when a device receives a 410, its device ID is recorded in `schema_stuck:{channel_id}:{device_id}` (48-hour TTL, write-once to avoid retry storms). This key can be used for ops dashboards and alerting to identify devices that have not migrated.
+
+### Changed
+
+- `SchemaACKStore` (ingestion) now exposes `IsForceDeprecated` and `SetStuck` methods, reading the `schema_force_deprecated:{channel_id}` key written by the device-registry service.
+- `ForceDeprecateSchema` response note updated to present tense: compact-format requests *are rejected* with 410 Gone (not "will receive").
+
 ## [0.1.0.0] - 2026-04-11
 
 ### Changed

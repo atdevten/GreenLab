@@ -52,9 +52,9 @@ function AppShell() {
         open={sidebarOpen}
       />
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         <Topbar page={page} onMenuClick={() => setSidebarOpen(o => !o)} />
-        <div className="main-pad" style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+        <div className="main-pad" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 24 }}>
           <Routes>
             <Route path="/"              element={<DashboardPage />} />
             <Route path="/workspaces"    element={<WorkspacesPage />} />

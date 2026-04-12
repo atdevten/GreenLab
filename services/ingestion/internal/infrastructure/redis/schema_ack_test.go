@@ -214,10 +214,101 @@ func TestSchemaActiveKey(t *testing.T) {
 	assert.Equal(t, "schema_active:chan-abc:dev-xyz", schemaActiveKey("chan-abc", "dev-xyz"))
 }
 
-// Ensure the store satisfies the handler interface declared in transport/http.
+// TestSchemaACKStore_IsForceDeprecated_NotSet returns false when no marker exists.
+func TestSchemaACKStore_IsForceDeprecated_NotSet(t *testing.T) {
+	rdb, mock := redismock.NewClientMock()
+	store := NewSchemaACKStore(rdb)
+	ctx := context.Background()
+
+	mock.ExpectGet("schema_force_deprecated:chan-1").RedisNil()
+
+	deprecated, err := store.IsForceDeprecated(ctx, "chan-1")
+	require.NoError(t, err)
+	assert.False(t, deprecated)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestSchemaACKStore_IsForceDeprecated_Set returns true when the marker exists.
+func TestSchemaACKStore_IsForceDeprecated_Set(t *testing.T) {
+	rdb, mock := redismock.NewClientMock()
+	store := NewSchemaACKStore(rdb)
+	ctx := context.Background()
+
+	mock.ExpectGet("schema_force_deprecated:chan-1").SetVal("1")
+
+	deprecated, err := store.IsForceDeprecated(ctx, "chan-1")
+	require.NoError(t, err)
+	assert.True(t, deprecated)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestSchemaACKStore_IsForceDeprecated_RedisError propagates the error.
+func TestSchemaACKStore_IsForceDeprecated_RedisError(t *testing.T) {
+	rdb, mock := redismock.NewClientMock()
+	store := NewSchemaACKStore(rdb)
+	ctx := context.Background()
+
+	mock.ExpectGet("schema_force_deprecated:chan-1").SetErr(fmt.Errorf("connection refused"))
+
+	_, err := store.IsForceDeprecated(ctx, "chan-1")
+	require.Error(t, err)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestSchemaACKStore_SetStuck uses SetNX so the key is only written once per device.
+func TestSchemaACKStore_SetStuck(t *testing.T) {
+	rdb, mock := redismock.NewClientMock()
+	store := NewSchemaACKStore(rdb)
+	ctx := context.Background()
+
+	mock.ExpectSetNX("schema_stuck:chan-1:dev-1", "1", schemaStuckTTL).SetVal(true)
+
+	err := store.SetStuck(ctx, "chan-1", "dev-1")
+	require.NoError(t, err)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestSchemaACKStore_SetStuck_AlreadyExists is a no-op (SetNX returns false) — not an error.
+func TestSchemaACKStore_SetStuck_AlreadyExists(t *testing.T) {
+	rdb, mock := redismock.NewClientMock()
+	store := NewSchemaACKStore(rdb)
+	ctx := context.Background()
+
+	mock.ExpectSetNX("schema_stuck:chan-1:dev-1", "1", schemaStuckTTL).SetVal(false)
+
+	err := store.SetStuck(ctx, "chan-1", "dev-1")
+	require.NoError(t, err)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestSchemaACKStore_SetStuck_RedisError propagates the error.
+func TestSchemaACKStore_SetStuck_RedisError(t *testing.T) {
+	rdb, mock := redismock.NewClientMock()
+	store := NewSchemaACKStore(rdb)
+	ctx := context.Background()
+
+	mock.ExpectSetNX("schema_stuck:chan-1:dev-1", "1", schemaStuckTTL).SetErr(fmt.Errorf("connection refused"))
+
+	err := store.SetStuck(ctx, "chan-1", "dev-1")
+	require.Error(t, err)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestSchemaForceDeprecatedKey and TestSchemaStuckKey confirm key formats.
+func TestSchemaForceDeprecatedKey(t *testing.T) {
+	assert.Equal(t, "schema_force_deprecated:chan-abc", schemaForceDeprecatedKey("chan-abc"))
+}
+
+func TestSchemaStuckKey(t *testing.T) {
+	assert.Equal(t, "schema_stuck:chan-abc:dev-xyz", schemaStuckKey("chan-abc", "dev-xyz"))
+}
+
+// Ensure the store satisfies the full handler interface declared in transport/http.
 // This is a compile-time check — no runtime assertions needed.
 var _ interface {
 	RecordACK(ctx context.Context, channelID, deviceID string, version uint32) error
+	IsForceDeprecated(ctx context.Context, channelID string) (bool, error)
+	SetStuck(ctx context.Context, channelID, deviceID string) error
 } = (*SchemaACKStore)(nil)
 
 // fmtDummy prevents the "imported and not used" error for fmt in table-driven helpers.

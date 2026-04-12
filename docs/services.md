@@ -133,8 +133,8 @@ services/ingestion/
     ├── infrastructure/
     │   ├── apikey/         # APIKeyValidator (wraps Redis cache + Postgres fallback)
     │   ├── kafka/          # ReadingProducer (raw.sensor.ingest)
-    │   └── redis/          # APIKeyCache (api_key validation)
-    └── transport/http/     # Handler (Ingest, BulkIngest), Router
+    │   └── redis/          # APIKeyCache (api_key validation); SchemaACKStore (ACK recording, force-deprecation check, stuck-device marking)
+    └── transport/http/     # Handler (Ingest, BulkIngest, ingestCompact with 410 enforcement), Router
 ```
 
 **Dependencies**

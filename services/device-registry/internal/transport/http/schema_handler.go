@@ -41,9 +41,7 @@ type forceDeprecateResponse struct {
 	ChannelID  string    `json:"channel_id"`
 	Deprecated bool      `json:"deprecated"`
 	ExpiresAt  time.Time `json:"expires_at"`
-	// Future work: once ingestion checks this key on every compact-format request,
-	// devices using the deprecated schema_version will receive 410 Gone after ExpiresAt.
-	Note string `json:"note"`
+	Note       string    `json:"note"`
 }
 
 // ForceDeprecateSchema godoc
@@ -79,7 +77,7 @@ func (h *SchemaHandler) ForceDeprecateSchema(c *gin.Context) {
 		ChannelID:  channelID,
 		Deprecated: true,
 		ExpiresAt:  expiresAt,
-		Note: "410 enforcement in ingestion is future work (TODO-032). " +
-			"Devices using the deprecated schema_version will not be rejected yet.",
+		Note: "Compact-format ingestion requests from devices using the old schema_version are rejected " +
+			"with 410 Gone until the deprecation marker expires.",
 	})
 }

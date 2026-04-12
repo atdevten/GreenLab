@@ -13,6 +13,7 @@ import (
 const (
 	schemaACKTTL    = 30 * 24 * time.Hour // 30 days
 	schemaActiveTTL = 7 * 24 * time.Hour  // 7 days
+	schemaStuckTTL  = 48 * time.Hour      // mirrors forceDeprecatedTTL in services/device-registry/internal/infrastructure/redis/schema_deprecation.go
 )
 
 // SchemaACKStore records per-device schema version acknowledgements in Redis.
@@ -37,6 +38,14 @@ func schemaACKKey(channelID, deviceID string) string {
 
 func schemaActiveKey(channelID, deviceID string) string {
 	return fmt.Sprintf("schema_active:%s:%s", channelID, deviceID)
+}
+
+func schemaForceDeprecatedKey(channelID string) string {
+	return fmt.Sprintf("schema_force_deprecated:%s", channelID)
+}
+
+func schemaStuckKey(channelID, deviceID string) string {
+	return fmt.Sprintf("schema_stuck:%s:%s", channelID, deviceID)
 }
 
 // RecordACK records that deviceID on channelID has successfully ingested the given schema version.
@@ -136,6 +145,35 @@ func (s *SchemaACKStore) ACKedDeviceCount(ctx context.Context, channelID string,
 		}
 	}
 	return count, nil
+}
+
+// IsForceDeprecated reports whether channelID has an active force-deprecation marker.
+// The marker is written by the device-registry service and expires after 48 hours.
+// Returns false if the key does not exist or has expired.
+func (s *SchemaACKStore) IsForceDeprecated(ctx context.Context, channelID string) (bool, error) {
+	err := s.client.Get(ctx, schemaForceDeprecatedKey(channelID)).Err()
+	if errors.Is(err, redis.Nil) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("SchemaACKStore.IsForceDeprecated: %w", err)
+	}
+	return true, nil
+}
+
+// SetStuck marks deviceID on channelID as stuck — it attempted to ingest during a
+// force-deprecation window without updating its schema. The key expires after 48 hours,
+// matching the force-deprecation window.
+//
+// SetNX semantics: the key is only written on the first call. Subsequent calls from the
+// same device during the same deprecation window are no-ops, preventing write storms on
+// aggressive retry loops and preserving the original TTL.
+func (s *SchemaACKStore) SetStuck(ctx context.Context, channelID, deviceID string) error {
+	key := schemaStuckKey(channelID, deviceID)
+	if err := s.client.SetNX(ctx, key, "1", schemaStuckTTL).Err(); err != nil {
+		return fmt.Errorf("SchemaACKStore.SetStuck: %w", err)
+	}
+	return nil
 }
 
 // scanCount counts the number of keys matching the given pattern using SCAN.

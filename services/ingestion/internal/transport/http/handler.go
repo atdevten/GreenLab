@@ -40,10 +40,12 @@ type ingestService interface {
 	IngestReplay(ctx context.Context, inputs []application.IngestInput, windowDays int, dlq application.ReplayDLQWriter) error
 }
 
-// schemaACKStore records per-device schema version acknowledgements.
-// A nil value disables ACK recording (fail-open).
+// schemaACKStore records per-device schema version acknowledgements and enforces
+// force-deprecation. A nil value disables all schema tracking (fail-open).
 type schemaACKStore interface {
 	RecordACK(ctx context.Context, channelID, deviceID string, version uint32) error
+	IsForceDeprecated(ctx context.Context, channelID string) (bool, error)
+	SetStuck(ctx context.Context, channelID, deviceID string) error
 }
 
 type Handler struct {
@@ -163,6 +165,25 @@ func (h *Handler) ingestCompact(c *gin.Context, channelID string, schema domain.
 
 	inputs, err := deserializeCompact(body, schema, d, channelID)
 	if err != nil {
+		// Upgrade a schema-version mismatch (409) to 410 Gone when the channel has been
+		// force-deprecated. Devices on the old schema must update their firmware; they should
+		// not retry. On Redis error, fall through to the normal 409 (fail-open).
+		var schemaMismatch *domain.SchemaMismatchError
+		if errors.As(err, &schemaMismatch) && h.ackStore != nil {
+			deprecated, depErr := h.ackStore.IsForceDeprecated(c.Request.Context(), channelID)
+			if depErr != nil {
+				h.logger.WarnContext(c.Request.Context(), "force-deprecation check failed",
+					"error", depErr, "channel_id", channelID)
+			} else if deprecated {
+				if stuckErr := h.ackStore.SetStuck(c.Request.Context(), channelID, schema.DeviceID); stuckErr != nil {
+					h.logger.WarnContext(c.Request.Context(), "schema stuck mark failed",
+						"error", stuckErr, "channel_id", channelID, "device_id", schema.DeviceID)
+				}
+				response.Error(c, apierr.New(http.StatusGone, "schema_force_deprecated",
+					"schema version has been force-deprecated; fetch the latest schema and update your device"))
+				return
+			}
+		}
 		errorToHTTPResponse(c, err, h.logger)
 		return
 	}
